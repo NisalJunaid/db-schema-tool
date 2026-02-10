@@ -6,9 +6,12 @@ use App\Http\Controllers\Api\DiagramRelationshipController;
 use App\Http\Controllers\Api\DiagramTableController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('api/v1')->middleware('auth')->group(function () {
+Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::apiResource('diagrams', DiagramController::class);
-    Route::apiResource('diagram-tables', DiagramTableController::class)->only(['store', 'update', 'destroy']);
-    Route::apiResource('diagram-columns', DiagramColumnController::class)->only(['store', 'update', 'destroy']);
-    Route::apiResource('diagram-relationships', DiagramRelationshipController::class)->only(['store', 'destroy']);
+    Route::apiResource('diagram-tables', DiagramTableController::class)
+        ->only(['store', 'update', 'destroy']);
+    Route::apiResource('diagram-columns', DiagramColumnController::class)
+        ->only(['store', 'update', 'destroy']);
+    Route::apiResource('diagram-relationships', DiagramRelationshipController::class)
+        ->only(['store', 'destroy']);
 });

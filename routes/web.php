@@ -8,8 +8,18 @@ Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
 
-Route::get('/dashboard', DashboardController::class)
-    ->middleware(['auth'])
-    ->name('dashboard');
+Route::middleware('auth')->group(function () {
+    Route::get('/dashboard', DashboardController::class)->name('dashboard');
+
+    Route::get('/diagrams', function () {
+        return Inertia::render('Diagrams/Index');
+    })->name('diagrams.index');
+
+    Route::get('/diagrams/{diagram}', function (string $diagram) {
+        return Inertia::render('Diagrams/Editor', [
+            'diagramId' => $diagram,
+        ]);
+    })->name('diagrams.editor');
+});
 
 require __DIR__.'/auth.php';
