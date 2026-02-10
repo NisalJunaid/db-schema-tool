@@ -8,6 +8,24 @@ use App\Models\User;
 
 class DiagramPolicy
 {
+    public function viewAny(User $user): bool
+    {
+        return $user->exists;
+    }
+
+    public function create(User $user, string $ownerType, int $ownerId): bool
+    {
+        if ($ownerType === User::class) {
+            return (int) $user->getKey() === $ownerId;
+        }
+
+        if ($ownerType === Team::class) {
+            return $user->teams()->whereKey($ownerId)->exists();
+        }
+
+        return false;
+    }
+
     public function view(User $user, Diagram $diagram): bool
     {
         return $this->isOwner($user, $diagram)
