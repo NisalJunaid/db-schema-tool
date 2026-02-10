@@ -1,9 +1,11 @@
 import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactFlow, {
+    MarkerType,
     Background,
     Controls,
     MiniMap,
+    addEdge,
     useEdgesState,
     useNodesState,
 } from 'reactflow';
@@ -45,6 +47,21 @@ const relationshipToEdge = (relationship, columnToTableId) => {
         type: 'smoothstep',
         animated: relationship.type === 'many_to_many',
         label: relationship.type,
+        style: {
+            stroke: '#4f46e5',
+            strokeWidth: 2,
+        },
+        labelStyle: {
+            fill: '#312e81',
+            fontWeight: 600,
+            fontSize: 11,
+        },
+        markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: '#4f46e5',
+            width: 18,
+            height: 18,
+        },
         data: relationship,
     };
 };
@@ -109,6 +126,75 @@ export default function Editor({ diagramId }) {
         }
     }, []);
 
+    const onConnect = useCallback(
+        async (connection) => {
+            const { source, target, sourceHandle, targetHandle } = connection;
+
+            if (!source || !target || !sourceHandle || !targetHandle || !resolvedDiagramId) {
+                return;
+            }
+
+            const tempEdgeId = `temp-${sourceHandle}-${targetHandle}-${Date.now()}`;
+            const optimisticEdge = {
+                id: tempEdgeId,
+                source,
+                target,
+                sourceHandle,
+                targetHandle,
+                type: 'smoothstep',
+                label: 'one_to_many',
+                animated: false,
+                style: {
+                    stroke: '#4f46e5',
+                    strokeWidth: 2,
+                },
+                labelStyle: {
+                    fill: '#312e81',
+                    fontWeight: 600,
+                    fontSize: 11,
+                },
+                markerEnd: {
+                    type: MarkerType.ArrowClosed,
+                    color: '#4f46e5',
+                    width: 18,
+                    height: 18,
+                },
+            };
+
+            setEdges((existingEdges) => addEdge(optimisticEdge, existingEdges));
+
+            try {
+                const payload = {
+                    diagram_id: Number(resolvedDiagramId),
+                    from_column_id: Number(sourceHandle),
+                    to_column_id: Number(targetHandle),
+                    type: 'one_to_many',
+                };
+
+                const { data } = await window.axios.post(`${API_PREFIX}/diagram-relationships`, payload);
+
+                setEdges((existingEdges) =>
+                    existingEdges.map((edge) => {
+                        if (edge.id !== tempEdgeId) {
+                            return edge;
+                        }
+
+                        return {
+                            ...edge,
+                            id: String(data?.id ?? edge.id),
+                            label: data?.type ?? edge.label,
+                            animated: (data?.type ?? edge.label) === 'many_to_many',
+                            data,
+                        };
+                    })
+                );
+            } catch (_storeError) {
+                setEdges((existingEdges) => existingEdges.filter((edge) => edge.id !== tempEdgeId));
+            }
+        },
+        [resolvedDiagramId, setEdges]
+    );
+
     return (
         <AuthenticatedLayout>
             <Head title="Diagram Editor" />
@@ -131,6 +217,7 @@ export default function Editor({ diagramId }) {
                             edges={edges}
                             onNodesChange={onNodesChange}
                             onEdgesChange={onEdgesChange}
+                            onConnect={onConnect}
                             onNodeDragStop={onNodeDragStop}
                             nodeTypes={nodeTypes}
                             fitView
