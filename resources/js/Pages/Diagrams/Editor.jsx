@@ -1,116 +1,101 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ReactFlow, Background, Controls, MiniMap, useEdgesState, useNodesState } from 'reactflow';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Background, Controls, MiniMap, ReactFlow, applyNodeChanges } from 'reactflow';
 import 'reactflow/dist/style.css';
-import TableNode from '@/Components/TableNode';
+import TableNode from '@/Components/Diagram/TableNode';
+import Sidebar from '@/Components/Diagram/Sidebar';
+import AddColumnModal from '@/Components/Diagram/modals/AddColumnModal';
+import AddTableModal from '@/Components/Diagram/modals/AddTableModal';
+import { asCollection, parseColumnIdFromHandle, toColumnHandleId } from '@/Components/Diagram/utils';
 import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
 const defaultTableSize = { w: 320, h: 240 };
+const defaultColumnForm = {
+    tableId: '',
+    preset: '',
+    name: '',
+    type: 'VARCHAR(255)',
+    nullable: false,
+    primary: false,
+    unique: false,
+    default: '',
+};
 
-function asCollection(value, fallbackKey) {
-    if (Array.isArray(value)) {
-        return value;
-    }
-
-    if (Array.isArray(value?.data)) {
-        return value.data;
-    }
-
-    if (Array.isArray(value?.[fallbackKey])) {
-        return value[fallbackKey];
-    }
-
-    return [];
-}
-
-function mapTableToNode(table, callbacks) {
+function normalizeTable(rawTable) {
     return {
-        id: String(table.id),
-        type: 'tableNode',
-        position: {
-            x: Number(table.x ?? 0),
-            y: Number(table.y ?? 0),
-        },
-        data: {
-            table: {
-                ...table,
-                columns: asCollection(table.columns),
-            },
-            ...callbacks,
-        },
-        style: {
-            width: Number(table.w ?? defaultTableSize.w),
-            height: Number(table.h ?? defaultTableSize.h),
-        },
+        ...rawTable,
+        columns: asCollection(rawTable.columns ?? rawTable.diagram_columns, 'diagram_columns'),
     };
 }
 
-function mapRelationshipToEdge(relationship) {
-    return {
-        id: String(relationship.id),
-        source: String(relationship.from_table_id ?? relationship.source_table_id ?? ''),
-        target: String(relationship.to_table_id ?? relationship.target_table_id ?? ''),
-        sourceHandle: `col-${relationship.from_column_id}`,
-        targetHandle: `col-${relationship.to_column_id}`,
-        animated: false,
-        style: { strokeWidth: 2 },
-        markerEnd: 'url(#react-flow__arrowclosed)',
-        data: { relationship },
-    };
+function relationshipLabel(type) {
+    if (type === 'one_to_one') {
+        return '1..1';
+    }
+
+    return '1..N';
 }
 
 export default function DiagramEditor() {
     const { diagramId } = usePage().props;
+    const reactFlowRef = useRef(null);
 
     const [diagram, setDiagram] = useState(null);
+    const [tables, setTables] = useState([]);
+    const [relationships, setRelationships] = useState([]);
+    const [nodes, setNodes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [savingState, setSavingState] = useState('saved');
+    const [savingState, setSavingState] = useState('Autosaved');
 
-    const [nodes, setNodes, onNodesChange] = useNodesState([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+    const [editMode, setEditMode] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [selectedColumnId, setSelectedColumnId] = useState(null);
+    const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
 
     const [showAddTableModal, setShowAddTableModal] = useState(false);
     const [addTableForm, setAddTableForm] = useState({ name: '', schema: '' });
-
     const [showAddColumnModal, setShowAddColumnModal] = useState(false);
-    const [addColumnForm, setAddColumnForm] = useState({
-        tableId: '',
-        name: '',
-        type: 'varchar(255)',
-        nullable: false,
-        primary: false,
-        unique: false,
-        default: '',
-    });
-
+    const [addColumnForm, setAddColumnForm] = useState(defaultColumnForm);
     const [formErrors, setFormErrors] = useState({});
 
-    const callbacks = useMemo(
-        () => ({
-            onRenameTable: async (tableId, name) => {
-                try {
-                    setSavingState('saving');
-                    await api.patch(`/api/v1/diagram-tables/${tableId}`, { name });
+    const viewportSaveTimerRef = useRef(null);
 
-                    setNodes((currentNodes) =>
-                        currentNodes.map((node) =>
-                            node.id === String(tableId)
-                                ? {
-                                      ...node,
-                                      data: {
-                                          ...node.data,
-                                          table: { ...node.data.table, name },
-                                      },
-                                  }
-                                : node,
-                        ),
+    const columnToTableMap = useMemo(() => {
+        const map = {};
+        tables.forEach((table) => {
+            (table.columns ?? []).forEach((column) => {
+                map[column.id] = table.id;
+            });
+        });
+        return map;
+    }, [tables]);
+
+    const handle401 = useCallback((message) => {
+        setError(message ?? `${SESSION_EXPIRED_MESSAGE} to continue editing.`);
+    }, []);
+
+    const buildNodeData = useCallback(
+        (table) => ({
+            table,
+            editMode,
+            selectedColumnId,
+            onRenameTable: async (tableId, name) => {
+                if (!editMode) {
+                    return;
+                }
+
+                try {
+                    setSavingState('Saving...');
+                    await api.patch(`/api/v1/diagram-tables/${tableId}`, { name });
+                    setTables((current) =>
+                        current.map((entry) => (entry.id === tableId ? { ...entry, name } : entry)),
                     );
-                    setSavingState('saved');
+                    setSavingState('Autosaved');
                 } catch (renameError) {
-                    setSavingState('error');
+                    setSavingState('Error');
                     if (renameError?.status === 401) {
-                        setError(`${SESSION_EXPIRED_MESSAGE} to continue editing.`);
+                        handle401();
                         return;
                     }
 
@@ -118,48 +103,71 @@ export default function DiagramEditor() {
                 }
             },
             onAddColumn: (tableId) => {
+                if (!editMode) {
+                    return;
+                }
+
                 setFormErrors({});
-                setAddColumnForm((current) => ({ ...current, tableId: String(tableId) }));
+                setAddColumnForm({ ...defaultColumnForm, tableId: String(tableId) });
                 setShowAddColumnModal(true);
             },
         }),
-        [setNodes],
+        [editMode, handle401, selectedColumnId],
     );
 
-    const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
+    useEffect(() => {
+        setNodes(
+            tables.map((table) => ({
+                id: String(table.id),
+                type: 'tableNode',
+                draggable: editMode,
+                position: {
+                    x: Number(table.x ?? 0),
+                    y: Number(table.y ?? 0),
+                },
+                data: buildNodeData(table),
+                style: {
+                    width: Number(table.w ?? defaultTableSize.w),
+                    height: Number(table.h ?? defaultTableSize.h),
+                },
+            })),
+        );
+    }, [tables, editMode, selectedColumnId, buildNodeData]);
 
-    const hydrateDiagram = useCallback(
-        (rawDiagram) => {
-            const diagramData = rawDiagram?.data ?? rawDiagram;
-            const tables = asCollection(diagramData?.diagram_tables, 'diagram_tables').map((table) => ({
-                ...table,
-                columns: asCollection(table.columns),
-            }));
+    const edges = useMemo(
+        () =>
+            relationships
+                .map((relationship) => {
+                    const sourceTableId = columnToTableMap[relationship.from_column_id];
+                    const targetTableId = columnToTableMap[relationship.to_column_id];
 
-            const tableByColumn = tables.reduce((carry, table) => {
-                table.columns.forEach((column) => {
-                    carry[column.id] = table.id;
-                });
-                return carry;
-            }, {});
+                    if (!sourceTableId || !targetTableId) {
+                        return null;
+                    }
 
-            const relationships = asCollection(diagramData?.diagram_relationships, 'diagram_relationships').map(
-                (relationship) => ({
-                    ...relationship,
-                    from_table_id: tableByColumn[relationship.from_column_id],
-                    to_table_id: tableByColumn[relationship.to_column_id],
-                }),
-            );
-
-            setDiagram(diagramData);
-            setNodes(tables.map((table) => mapTableToNode(table, callbacks)));
-            setEdges(
-                relationships
-                    .filter((relationship) => relationship.from_table_id && relationship.to_table_id)
-                    .map(mapRelationshipToEdge),
-            );
-        },
-        [callbacks, setEdges, setNodes],
+                    const isHovered = hoveredEdgeId === String(relationship.id);
+                    return {
+                        id: String(relationship.id),
+                        source: String(sourceTableId),
+                        target: String(targetTableId),
+                        sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'),
+                        targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'),
+                        type: 'default',
+                        label: relationshipLabel(relationship.type),
+                        animated: false,
+                        style: {
+                            strokeWidth: isHovered ? 3 : 2,
+                            stroke: isHovered ? '#4f46e5' : '#64748b',
+                        },
+                        labelStyle: {
+                            fill: '#334155',
+                            fontSize: 11,
+                            fontWeight: 600,
+                        },
+                    };
+                })
+                .filter(Boolean),
+        [relationships, hoveredEdgeId, columnToTableMap],
     );
 
     useEffect(() => {
@@ -168,10 +176,26 @@ export default function DiagramEditor() {
                 setLoading(true);
                 setError('');
                 const response = await api.get(`/api/v1/diagrams/${diagramId}`);
-                hydrateDiagram(response);
+                const diagramPayload = response?.data ?? response;
+                const normalizedTables = asCollection(diagramPayload.diagram_tables ?? diagramPayload.diagramTables, 'diagram_tables').map(
+                    normalizeTable,
+                );
+
+                const relationshipRows = asCollection(
+                    diagramPayload.diagram_relationships ?? diagramPayload.diagramRelationships,
+                    'diagram_relationships',
+                ).map((relationship) => ({
+                    ...relationship,
+                    sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'),
+                    targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'),
+                }));
+
+                setDiagram(diagramPayload);
+                setTables(normalizedTables);
+                setRelationships(relationshipRows);
             } catch (loadError) {
                 if (loadError?.status === 401) {
-                    setError(`${SESSION_EXPIRED_MESSAGE} to continue editing.`);
+                    handle401();
                     return;
                 }
 
@@ -182,79 +206,138 @@ export default function DiagramEditor() {
         };
 
         loadDiagram();
-    }, [diagramId, hydrateDiagram]);
+    }, [diagramId, handle401]);
+
+    const onNodesChange = useCallback((changes) => {
+        setNodes((current) => applyNodeChanges(changes, current));
+    }, []);
 
     const onConnect = useCallback(
         async (connection) => {
-            const sourceColumnId = Number((connection.sourceHandle || '').replace('col-', ''));
-            const targetColumnId = Number((connection.targetHandle || '').replace('col-', ''));
+            if (!editMode) {
+                return;
+            }
 
-            if (!sourceColumnId || !targetColumnId) {
+            const sourceColumnId = parseColumnIdFromHandle(connection.sourceHandle);
+            const targetColumnId = parseColumnIdFromHandle(connection.targetHandle);
+
+            if (!sourceColumnId || !targetColumnId || sourceColumnId === targetColumnId) {
+                return;
+            }
+
+            const isDuplicate = relationships.some(
+                (entry) => Number(entry.from_column_id) === sourceColumnId && Number(entry.to_column_id) === targetColumnId,
+            );
+
+            if (isDuplicate) {
                 return;
             }
 
             try {
-                setSavingState('saving');
+                setSavingState('Saving...');
                 const response = await api.post('/api/v1/diagram-relationships', {
-                    diagram_id: diagramId,
+                    diagram_id: Number(diagramId),
                     from_column_id: sourceColumnId,
                     to_column_id: targetColumnId,
                     type: 'one_to_many',
                 });
 
-                const relationship = response?.data ?? response;
-                const edge = {
-                    id: String(relationship.id),
-                    source: connection.source,
-                    target: connection.target,
-                    sourceHandle: connection.sourceHandle,
-                    targetHandle: connection.targetHandle,
-                    markerEnd: 'url(#react-flow__arrowclosed)',
-                    style: { strokeWidth: 2 },
-                };
-
-                setEdges((currentEdges) => [...currentEdges, edge]);
-                setSavingState('saved');
+                const created = response?.data ?? response;
+                setRelationships((current) => [
+                    ...current,
+                    {
+                        ...created,
+                        sourceHandle: connection.sourceHandle,
+                        targetHandle: connection.targetHandle,
+                    },
+                ]);
+                setSavingState('Autosaved');
             } catch (connectError) {
-                setSavingState('error');
+                setSavingState('Error');
                 if (connectError?.status === 401) {
-                    setError(`${SESSION_EXPIRED_MESSAGE} to continue editing.`);
+                    handle401();
                     return;
                 }
 
                 setError(connectError.message || 'Failed to create relationship.');
             }
         },
-        [diagramId, setEdges],
+        [diagramId, editMode, handle401, relationships],
     );
 
-    const onNodeDragStop = useCallback(async (_, node) => {
-        try {
-            setSavingState('saving');
-            await api.patch(`/api/v1/diagram-tables/${node.id}`, {
-                x: Math.round(node.position.x),
-                y: Math.round(node.position.y),
-                w: Math.round(node.width ?? defaultTableSize.w),
-                h: Math.round(node.height ?? defaultTableSize.h),
-            });
-            setSavingState('saved');
-        } catch (dragError) {
-            setSavingState('error');
-            if (dragError?.status === 401) {
-                setError(`${SESSION_EXPIRED_MESSAGE} to continue editing.`);
-                return;
+    const onNodeDragStop = useCallback(
+        async (_, node) => {
+            try {
+                setSavingState('Saving...');
+                await api.patch(`/api/v1/diagram-tables/${node.id}`, {
+                    x: Math.round(node.position.x),
+                    y: Math.round(node.position.y),
+                    w: Math.round(node.width ?? defaultTableSize.w),
+                    h: Math.round(node.height ?? defaultTableSize.h),
+                });
+
+                setTables((current) =>
+                    current.map((table) =>
+                        String(table.id) === String(node.id)
+                            ? {
+                                  ...table,
+                                  x: Math.round(node.position.x),
+                                  y: Math.round(node.position.y),
+                                  w: Math.round(node.width ?? defaultTableSize.w),
+                                  h: Math.round(node.height ?? defaultTableSize.h),
+                              }
+                            : table,
+                    ),
+                );
+                setSavingState('Autosaved');
+            } catch (dragError) {
+                setSavingState('Error');
+                if (dragError?.status === 401) {
+                    handle401();
+                    return;
+                }
+
+                setError(dragError.message || 'Failed to update table position.');
+            }
+        },
+        [handle401],
+    );
+
+    const handleViewportSave = useCallback(
+        (viewport) => {
+            if (viewportSaveTimerRef.current) {
+                clearTimeout(viewportSaveTimerRef.current);
             }
 
-            setError(dragError.message || 'Failed to update table position.');
-        }
-    }, []);
+            viewportSaveTimerRef.current = setTimeout(async () => {
+                try {
+                    setSavingState('Saving...');
+                    await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport });
+                    setSavingState('Autosaved');
+                } catch (viewportError) {
+                    setSavingState('Error');
+                    if (viewportError?.status === 401) {
+                        handle401();
+                        return;
+                    }
+
+                    setError(viewportError.message || 'Failed to save viewport.');
+                }
+            }, 450);
+        },
+        [diagramId, handle401],
+    );
 
     const submitAddTable = async (event) => {
         event.preventDefault();
+        if (!editMode) {
+            return;
+        }
+
         setFormErrors({});
 
         try {
-            setSavingState('saving');
+            setSavingState('Saving...');
             const response = await api.post('/api/v1/diagram-tables', {
                 diagram_id: Number(diagramId),
                 name: addTableForm.name,
@@ -265,34 +348,35 @@ export default function DiagramEditor() {
                 h: defaultTableSize.h,
             });
 
-            const created = response?.data ?? response;
-            const node = mapTableToNode({ ...created, columns: [] }, callbacks);
-            setNodes((currentNodes) => [...currentNodes, node]);
+            const created = normalizeTable(response?.data ?? response);
+            setTables((current) => [...current, created]);
             setShowAddTableModal(false);
             setAddTableForm({ name: '', schema: '' });
-            setSavingState('saved');
+            setSavingState('Autosaved');
         } catch (submitError) {
+            setSavingState('Error');
             if (submitError?.status === 401) {
                 setFormErrors({ general: [SESSION_EXPIRED_MESSAGE] });
-                setSavingState('error');
                 return;
             }
 
             const validationErrors = submitError?.payload?.errors ?? {};
-            setFormErrors(validationErrors);
-            setSavingState('error');
-            if (Object.keys(validationErrors).length === 0) {
-                setFormErrors({ general: [submitError.message || 'Failed to create table.'] });
-            }
+            setFormErrors(
+                Object.keys(validationErrors).length ? validationErrors : { general: [submitError.message || 'Failed to create table.'] },
+            );
         }
     };
 
     const submitAddColumn = async (event) => {
         event.preventDefault();
+        if (!editMode) {
+            return;
+        }
+
         setFormErrors({});
 
         try {
-            setSavingState('saving');
+            setSavingState('Saving...');
             const response = await api.post('/api/v1/diagram-columns', {
                 diagram_table_id: Number(addColumnForm.tableId),
                 name: addColumnForm.name,
@@ -304,50 +388,49 @@ export default function DiagramEditor() {
             });
 
             const createdColumn = response?.data ?? response;
-
-            setNodes((currentNodes) =>
-                currentNodes.map((node) =>
-                    node.id === String(addColumnForm.tableId)
-                        ? {
-                              ...node,
-                              data: {
-                                  ...node.data,
-                                  table: {
-                                      ...node.data.table,
-                                      columns: [...(node.data.table.columns ?? []), createdColumn],
-                                  },
-                              },
-                          }
-                        : node,
+            setTables((current) =>
+                current.map((table) =>
+                    String(table.id) === String(addColumnForm.tableId)
+                        ? { ...table, columns: [...(table.columns ?? []), createdColumn] }
+                        : table,
                 ),
             );
 
             setShowAddColumnModal(false);
-            setAddColumnForm({
-                tableId: '',
-                name: '',
-                type: 'varchar(255)',
-                nullable: false,
-                primary: false,
-                unique: false,
-                default: '',
-            });
-            setSavingState('saved');
+            setAddColumnForm(defaultColumnForm);
+            setSavingState('Autosaved');
         } catch (submitError) {
+            setSavingState('Error');
             if (submitError?.status === 401) {
                 setFormErrors({ general: [SESSION_EXPIRED_MESSAGE] });
-                setSavingState('error');
                 return;
             }
 
             const validationErrors = submitError?.payload?.errors ?? {};
-            setFormErrors(validationErrors);
-            setSavingState('error');
-            if (Object.keys(validationErrors).length === 0) {
-                setFormErrors({ general: [submitError.message || 'Failed to create column.'] });
-            }
+            setFormErrors(
+                Object.keys(validationErrors).length
+                    ? validationErrors
+                    : { general: [submitError.message || 'Failed to create column.'] },
+            );
         }
     };
+
+    const focusOnTable = useCallback(
+        (tableId) => {
+            const node = nodes.find((entry) => entry.id === String(tableId));
+            if (!node) {
+                return;
+            }
+
+            reactFlowRef.current?.setCenter(node.position.x + 160, node.position.y + 100, {
+                zoom: 1.1,
+                duration: 500,
+            });
+        },
+        [nodes],
+    );
+
+    const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
 
     if (loading) {
         return (
@@ -361,193 +444,115 @@ export default function DiagramEditor() {
         <>
             <Head title={diagram?.name ? `Diagram: ${diagram.name}` : `Diagram ${diagramId}`} />
 
-            <section className="flex h-screen flex-col bg-slate-100">
-                <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
-                    <div>
-                        <h1 className="text-lg font-semibold text-slate-900">{diagram?.name || `Diagram #${diagramId}`}</h1>
-                        <p className="text-xs text-slate-500">
-                            Autosave:{' '}
-                            <span
-                                className={`font-semibold ${
-                                    savingState === 'saved'
-                                        ? 'text-emerald-600'
-                                        : savingState === 'saving'
-                                          ? 'text-amber-600'
-                                          : 'text-red-600'
+            <section className="flex h-screen bg-slate-100">
+                <Sidebar
+                    diagramName={diagram?.name || `Diagram #${diagramId}`}
+                    tables={tables}
+                    isCollapsed={sidebarCollapsed}
+                    onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
+                    onFocusTable={focusOnTable}
+                    onFocusColumn={setSelectedColumnId}
+                    onAddTable={() => {
+                        if (!editMode) {
+                            return;
+                        }
+                        setFormErrors({});
+                        setShowAddTableModal(true);
+                    }}
+                    editMode={editMode}
+                    onToggleEditMode={() => setEditMode((current) => !current)}
+                />
+
+                <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3 shadow-sm">
+                        <div>
+                            <h1 className="text-base font-semibold text-slate-900">{diagram?.name || `Diagram #${diagramId}`}</h1>
+                            <p className="text-xs text-slate-500">React Flow diagram editor</p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setEditMode((current) => !current)}
+                                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                                    editMode
+                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                        : 'border-slate-300 bg-slate-50 text-slate-700'
                                 }`}
                             >
-                                {savingState}
-                            </span>
-                        </p>
-                    </div>
-                    <button
-                        type="button"
-                        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-                        onClick={() => {
-                            setFormErrors({});
-                            setShowAddTableModal(true);
-                        }}
-                    >
-                        Add table
-                    </button>
-                </div>
+                                Edit mode: {editMode ? 'ON' : 'OFF'}
+                            </button>
 
-                {error && (
-                    <div className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        <span>{error}</span>
-                        <button
-                            type="button"
-                            onClick={() => router.get('/login')}
-                            className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
-                        >
-                            Sign in
-                        </button>
-                    </div>
-                )}
+                            <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{savingState}</span>
 
-                <div className="min-h-0 flex-1 p-6">
-                    <div className="h-full overflow-hidden rounded-xl border border-slate-300 bg-white shadow">
+                            <button
+                                type="button"
+                                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700"
+                                onClick={() => reactFlowRef.current?.fitView({ padding: 0.2, duration: 350 })}
+                            >
+                                Fit view
+                            </button>
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            <span>{error}</span>
+                            <button
+                                type="button"
+                                onClick={() => router.get('/login')}
+                                className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                            >
+                                Sign in
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                         <ReactFlow
                             nodes={nodes}
                             edges={edges}
                             nodeTypes={nodeTypes}
-                            onNodesChange={onNodesChange}
-                            onEdgesChange={onEdgesChange}
-                            onConnect={onConnect}
-                            onNodeDragStop={onNodeDragStop}
                             fitView
-                            className="h-full w-full"
+                            onInit={(instance) => {
+                                reactFlowRef.current = instance;
+                            }}
+                            nodesDraggable={editMode}
+                            onNodesChange={onNodesChange}
+                            onNodeDragStop={onNodeDragStop}
+                            onConnect={onConnect}
+                            onMoveEnd={(_, viewport) => handleViewportSave(viewport)}
+                            onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
+                            onEdgeMouseLeave={() => setHoveredEdgeId(null)}
+                            proOptions={{ hideAttribution: true }}
+                            defaultEdgeOptions={{ type: 'bezier' }}
+                            connectionMode="strict"
                         >
+                            <Background gap={20} size={1} color="#cbd5e1" />
                             <MiniMap pannable zoomable />
-                            <Controls />
-                            <Background gap={20} size={1} />
+                            <Controls showInteractive={false} />
                         </ReactFlow>
                     </div>
                 </div>
             </section>
 
-            {showAddTableModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-                    <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-                        <h2 className="text-lg font-semibold text-slate-900">Add table</h2>
-                        <form className="mt-4 space-y-4" onSubmit={submitAddTable}>
-                            <div>
-                                <label className="mb-1 block text-sm font-medium text-slate-700">Table name</label>
-                                <input
-                                    required
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                                    value={addTableForm.name}
-                                    onChange={(event) => setAddTableForm((current) => ({ ...current, name: event.target.value }))}
-                                />
-                                {formErrors?.name?.[0] && <p className="mt-1 text-xs text-red-600">{formErrors.name[0]}</p>}
-                            </div>
+            <AddTableModal
+                open={showAddTableModal}
+                form={addTableForm}
+                errors={formErrors}
+                onChange={(field, value) => setAddTableForm((current) => ({ ...current, [field]: value }))}
+                onClose={() => setShowAddTableModal(false)}
+                onSubmit={submitAddTable}
+            />
 
-                            <div>
-                                <label className="mb-1 block text-sm font-medium text-slate-700">Schema (optional)</label>
-                                <input
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                                    value={addTableForm.schema}
-                                    onChange={(event) =>
-                                        setAddTableForm((current) => ({ ...current, schema: event.target.value }))
-                                    }
-                                />
-                            </div>
-
-                            {formErrors?.general?.[0] && <p className="text-sm text-red-600">{formErrors.general[0]}</p>}
-
-                            <div className="flex justify-end gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAddTableModal(false)}
-                                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
-                                >
-                                    Cancel
-                                </button>
-                                <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white">
-                                    Create table
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {showAddColumnModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-                    <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-                        <h2 className="text-lg font-semibold text-slate-900">Add column</h2>
-                        <form className="mt-4 space-y-4" onSubmit={submitAddColumn}>
-                            <div>
-                                <label className="mb-1 block text-sm font-medium text-slate-700">Column name</label>
-                                <input
-                                    required
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                                    value={addColumnForm.name}
-                                    onChange={(event) => setAddColumnForm((current) => ({ ...current, name: event.target.value }))}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="mb-1 block text-sm font-medium text-slate-700">Type</label>
-                                <input
-                                    required
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                                    value={addColumnForm.type}
-                                    onChange={(event) => setAddColumnForm((current) => ({ ...current, type: event.target.value }))}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="mb-1 block text-sm font-medium text-slate-700">Default</label>
-                                <input
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                                    value={addColumnForm.default}
-                                    onChange={(event) =>
-                                        setAddColumnForm((current) => ({ ...current, default: event.target.value }))
-                                    }
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-3 text-sm">
-                                {[
-                                    ['nullable', 'Nullable'],
-                                    ['primary', 'Primary'],
-                                    ['unique', 'Unique'],
-                                ].map(([field, label]) => (
-                                    <label key={field} className="flex items-center gap-2">
-                                        <input
-                                            type="checkbox"
-                                            checked={addColumnForm[field]}
-                                            onChange={(event) =>
-                                                setAddColumnForm((current) => ({
-                                                    ...current,
-                                                    [field]: event.target.checked,
-                                                }))
-                                            }
-                                        />
-                                        {label}
-                                    </label>
-                                ))}
-                            </div>
-
-                            {formErrors?.general?.[0] && <p className="text-sm text-red-600">{formErrors.general[0]}</p>}
-
-                            <div className="flex justify-end gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAddColumnModal(false)}
-                                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
-                                >
-                                    Cancel
-                                </button>
-                                <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white">
-                                    Add column
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <AddColumnModal
+                open={showAddColumnModal}
+                form={addColumnForm}
+                errors={formErrors}
+                onChange={(field, value) => setAddColumnForm((current) => ({ ...current, [field]: value }))}
+                onClose={() => setShowAddColumnModal(false)}
+                onSubmit={submitAddColumn}
+            />
         </>
     );
 }
