@@ -3,14 +3,20 @@ export async function apiRequest(url, { method = 'GET', data, headers = {} } = {
         .querySelector('meta[name="csrf-token"]')
         ?.getAttribute('content');
 
+    const requestHeaders = {
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+        ...headers,
+    };
+
+    if (data !== undefined && !Object.keys(requestHeaders).some((key) => key.toLowerCase() === 'content-type')) {
+        requestHeaders['Content-Type'] = 'application/json';
+    }
+
     const response = await fetch(url, {
         method,
-        headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
-            ...headers,
-        },
+        headers: requestHeaders,
         credentials: 'same-origin',
         body: data !== undefined ? JSON.stringify(data) : undefined,
     });
@@ -18,7 +24,7 @@ export async function apiRequest(url, { method = 'GET', data, headers = {} } = {
     let payload = null;
 
     try {
-        payload = await response.json();
+        payload = response.status === 204 ? null : await response.json();
     } catch {
         payload = null;
     }

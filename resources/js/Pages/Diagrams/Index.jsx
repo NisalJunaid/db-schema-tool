@@ -48,6 +48,11 @@ export default function DiagramsIndex() {
                 const data = await apiRequest('/api/v1/diagrams');
                 setDiagrams(flattenDiagrams(data));
             } catch (loadError) {
+                if (loadError?.status === 401) {
+                    setError('Your session has expired. Please sign in again to view diagrams.');
+                    return;
+                }
+
                 setError(loadError.message || 'Failed to load diagrams.');
             } finally {
                 setLoading(false);
@@ -75,7 +80,10 @@ export default function DiagramsIndex() {
 
                 setTeams(teamList);
                 setSupportsTeamOwner(teamList.length > 0);
-            } catch {
+            } catch (teamError) {
+                if (teamError?.status === 401) {
+                    setError('Your session has expired. Please sign in again to load teams.');
+                }
                 setTeams([]);
                 setSupportsTeamOwner(false);
             }
@@ -156,6 +164,11 @@ export default function DiagramsIndex() {
                 router.visit(`/diagrams/${createdId}`);
             }
         } catch (submitError) {
+            if (submitError?.status === 401) {
+                setFormErrors({ general: ['Your session has expired. Please sign in again.'] });
+                return;
+            }
+
             const validationErrors = submitError?.payload?.errors ?? {};
             setFormErrors(validationErrors);
 
