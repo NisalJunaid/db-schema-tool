@@ -15,11 +15,11 @@ class DiagramPolicy
 
     public function create(User $user, string $ownerType, int $ownerId): bool
     {
-        if ($ownerType === User::class) {
+        if ($ownerType === 'user') {
             return (int) $user->getKey() === $ownerId;
         }
 
-        if ($ownerType === Team::class) {
+        if ($ownerType === 'team') {
             return $user->teams()->whereKey($ownerId)->exists();
         }
 
