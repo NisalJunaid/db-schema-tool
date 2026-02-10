@@ -18,8 +18,30 @@ import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
 const defaultTableSize = { w: 320, h: 240 };
 const defaultColumnForm = { tableId: '', preset: '', name: '', type: 'VARCHAR(255)', nullable: false, primary: false, unique: false, default: '' };
+const diagramColorPalette = ['#6366f1', '#0ea5e9', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e'];
 
 const normalizeTable = (rawTable) => ({ ...rawTable, columns: asCollection(rawTable.columns ?? rawTable.diagram_columns, 'diagram_columns') });
+const cloneState = (value) => JSON.parse(JSON.stringify(value));
+
+const pickNextColor = (usedColors) => {
+    const normalizedUsed = new Set((usedColors ?? []).map((color) => String(color).toLowerCase()));
+    const available = diagramColorPalette.find((color) => !normalizedUsed.has(color.toLowerCase()));
+    if (available) return available;
+    return diagramColorPalette[(usedColors?.length ?? 0) % diagramColorPalette.length];
+};
+
+const withAssignedRelationshipColors = (sourceRelationships) => {
+    const used = [];
+    return sourceRelationships.map((relationship) => {
+        if (relationship.color) {
+            used.push(relationship.color);
+            return relationship;
+        }
+        const color = pickNextColor(used);
+        used.push(color);
+        return { ...relationship, color };
+    });
+};
 
 export default function DiagramEditor() {
     const { diagramId } = usePage().props;
@@ -37,7 +59,8 @@ export default function DiagramEditor() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [activeEditTableId, setActiveEditTableId] = useState(null);
     const [selectedColumnId, setSelectedColumnId] = useState(null);
-    const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
+    const [selectedEdgeId, setSelectedEdgeId] = useState(null);
+    const [history, setHistory] = useState({ past: [], present: null, future: [] });
 
     const [showAddTableModal, setShowAddTableModal] = useState(false);
     const [addTableForm, setAddTableForm] = useState({ name: '', schema: '' });
@@ -56,6 +79,9 @@ export default function DiagramEditor() {
     const [allDiagrams, setAllDiagrams] = useState([]);
     const [teams, setTeams] = useState([]);
 
+    const canUndo = history.past.length > 0;
+    const canRedo = history.future.length > 0;
+
     const columnToTableMap = useMemo(() => {
         const map = {};
         tables.forEach((table) => (table.columns ?? []).forEach((column) => {
@@ -63,6 +89,53 @@ export default function DiagramEditor() {
         }));
         return map;
     }, [tables]);
+
+    const buildSnapshot = useCallback((sourceTables, sourceRelationships) => ({
+        tables: cloneState(sourceTables),
+        relationships: cloneState(sourceRelationships),
+    }), []);
+
+    const commitEditorState = useCallback((nextTables, nextRelationships, previousTables = tables, previousRelationships = relationships) => {
+        setHistory((current) => ({
+            past: [...current.past, buildSnapshot(previousTables, previousRelationships)],
+            present: buildSnapshot(nextTables, nextRelationships),
+            future: [],
+        }));
+        setTables(nextTables);
+        setRelationships(nextRelationships);
+    }, [buildSnapshot, relationships, tables]);
+
+    const undoHistory = useCallback(() => {
+        setHistory((current) => {
+            if (!current.past.length) return current;
+            const previous = current.past[current.past.length - 1];
+            const futureHead = current.present ? [buildSnapshot(current.present.tables, current.present.relationships)] : [];
+            setTables(cloneState(previous.tables));
+            setRelationships(cloneState(previous.relationships));
+            setSelectedEdgeId(null);
+            return {
+                past: current.past.slice(0, -1),
+                present: buildSnapshot(previous.tables, previous.relationships),
+                future: [...futureHead, ...current.future],
+            };
+        });
+    }, [buildSnapshot]);
+
+    const redoHistory = useCallback(() => {
+        setHistory((current) => {
+            if (!current.future.length) return current;
+            const [next, ...remainingFuture] = current.future;
+            const nextPast = current.present ? [...current.past, buildSnapshot(current.present.tables, current.present.relationships)] : current.past;
+            setTables(cloneState(next.tables));
+            setRelationships(cloneState(next.relationships));
+            setSelectedEdgeId(null);
+            return {
+                past: nextPast,
+                present: buildSnapshot(next.tables, next.relationships),
+                future: remainingFuture,
+            };
+        });
+    }, [buildSnapshot]);
 
     const handle401 = useCallback((message) => setError(message ?? `${SESSION_EXPIRED_MESSAGE} to continue editing.`), []);
 
@@ -72,22 +145,33 @@ export default function DiagramEditor() {
             setError('');
             const response = await api.get(`/api/v1/diagrams/${diagramId}`);
             const diagramPayload = response?.data ?? response;
-            const normalizedTables = asCollection(diagramPayload.diagram_tables ?? diagramPayload.diagramTables, 'diagram_tables').map(normalizeTable);
-            const relationshipRows = asCollection(diagramPayload.diagram_relationships ?? diagramPayload.diagramRelationships, 'diagram_relationships').map((relationship) => ({
+            const loadedTables = asCollection(diagramPayload.diagram_tables ?? diagramPayload.diagramTables, 'diagram_tables').map(normalizeTable);
+            const usedTableColors = [];
+            const normalizedTables = loadedTables.map((table) => {
+                if (table.color) {
+                    usedTableColors.push(table.color);
+                    return table;
+                }
+                const color = pickNextColor(usedTableColors);
+                usedTableColors.push(color);
+                return { ...table, color };
+            });
+            const relationshipRows = withAssignedRelationshipColors(asCollection(diagramPayload.diagram_relationships ?? diagramPayload.diagramRelationships, 'diagram_relationships').map((relationship) => ({
                 ...relationship,
                 sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'),
                 targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'),
-            }));
+            })));
             setDiagram(diagramPayload);
             setTables(normalizedTables);
             setRelationships(relationshipRows);
+            setHistory({ past: [], present: buildSnapshot(normalizedTables, relationshipRows), future: [] });
         } catch (loadError) {
             if (loadError?.status === 401) return handle401();
             setError(loadError.message || 'Unable to load diagram.');
         } finally {
             setLoading(false);
         }
-    }, [diagramId, handle401]);
+    }, [buildSnapshot, diagramId, handle401]);
 
     useEffect(() => {
         loadDiagram();
@@ -105,23 +189,26 @@ export default function DiagramEditor() {
     const onRenameTable = useCallback(async (tableId, name) => {
         if (!editMode) return;
         const previousTables = tables;
-        setTables((current) => current.map((entry) => (entry.id === tableId ? { ...entry, name } : entry)));
+        const nextTables = tables.map((entry) => (entry.id === tableId ? { ...entry, name } : entry));
+        commitEditorState(nextTables, relationships, previousTables, relationships);
         try {
             setSavingState('Saving...');
             await api.patch(`/api/v1/diagram-tables/${tableId}`, { name });
             setSavingState('Autosaved');
         } catch (renameError) {
             setTables(previousTables);
+            setHistory((current) => ({ ...current, present: buildSnapshot(previousTables, relationships), past: current.past.slice(0, -1) }));
             setSavingState('Error');
             if (renameError?.status === 401) return handle401();
             setError(renameError.message || 'Failed to rename table.');
         }
-    }, [editMode, handle401, tables]);
+    }, [buildSnapshot, commitEditorState, editMode, handle401, relationships, tables]);
 
     const onUpdateTableColor = useCallback(async (tableId, color) => {
         if (!editMode) return;
         const previousTables = tables;
-        setTables((current) => current.map((table) => (table.id === tableId ? { ...table, color } : table)));
+        const nextTables = tables.map((table) => (table.id === tableId ? { ...table, color } : table));
+        commitEditorState(nextTables, relationships, previousTables, relationships);
         try {
             setSavingState('Saving...');
             await api.patch(`/api/v1/diagram-tables/${tableId}`, { color });
@@ -131,7 +218,7 @@ export default function DiagramEditor() {
             setSavingState('Error');
             setError(updateError.message || 'Failed to update table color.');
         }
-    }, [editMode, tables]);
+    }, [commitEditorState, editMode, relationships, tables]);
 
     const onAddColumn = useCallback((tableId) => { setFormErrors({}); setColumnModalMode('create'); setEditingColumn(null); setAddColumnForm({ ...defaultColumnForm, tableId: String(tableId) }); setShowAddColumnModal(true); }, []);
     const onEditColumn = useCallback((column) => { setFormErrors({}); setColumnModalMode('edit'); setEditingColumn(column); setAddColumnForm({ ...defaultColumnForm, tableId: String(column.diagram_table_id), name: column.name, type: column.type, nullable: Boolean(column.nullable), primary: Boolean(column.primary), unique: Boolean(column.unique), default: column.default ?? '' }); setShowAddColumnModal(true); }, []);
@@ -139,11 +226,13 @@ export default function DiagramEditor() {
     const onDeleteColumn = useCallback(async (columnId) => {
         if (!editMode || !window.confirm('Delete this field?')) return;
         const previousTables = tables;
-        setTables((current) => current.map((table) => ({ ...table, columns: (table.columns ?? []).filter((column) => Number(column.id) !== Number(columnId)) })));
-        setRelationships((current) => current.filter((r) => Number(r.from_column_id) !== Number(columnId) && Number(r.to_column_id) !== Number(columnId)));
+        const previousRelationships = relationships;
+        const nextTables = tables.map((table) => ({ ...table, columns: (table.columns ?? []).filter((column) => Number(column.id) !== Number(columnId)) }));
+        const nextRelationships = relationships.filter((r) => Number(r.from_column_id) !== Number(columnId) && Number(r.to_column_id) !== Number(columnId));
+        commitEditorState(nextTables, nextRelationships, previousTables, previousRelationships);
         try { setSavingState('Saving...'); await api.delete(`/api/v1/diagram-columns/${columnId}`); setSavingState('Autosaved'); }
         catch (deleteError) { setTables(previousTables); setSavingState('Error'); setError(deleteError.message || 'Failed to delete field.'); }
-    }, [editMode, tables]);
+    }, [commitEditorState, editMode, relationships, tables]);
 
     const onToggleActiveEditTable = useCallback((tableId) => setActiveEditTableId((current) => (Number(current) === Number(tableId) ? null : tableId)), []);
     const buildNodeData = useCallback((table) => ({ table, editMode, selectedColumnId, isActiveEditTable: Number(activeEditTableId) === Number(table.id), onToggleActiveEditTable, onRenameTable, onUpdateTableColor, onAddColumn, onEditColumn, onDeleteColumn }), [activeEditTableId, editMode, selectedColumnId, onToggleActiveEditTable, onRenameTable, onUpdateTableColor, onAddColumn, onEditColumn, onDeleteColumn]);
@@ -156,11 +245,29 @@ export default function DiagramEditor() {
         const sourceTableId = columnToTableMap[relationship.from_column_id];
         const targetTableId = columnToTableMap[relationship.to_column_id];
         if (!sourceTableId || !targetTableId) return null;
-        const isHovered = hoveredEdgeId === String(relationship.id);
-        return { id: String(relationship.id), source: String(sourceTableId), target: String(targetTableId), sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'), targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'), type: 'default', label: relationshipLabel(relationship.type), animated: false, data: { type: relationship.type }, style: { strokeWidth: isHovered ? 3 : 2, stroke: isHovered ? '#4f46e5' : '#64748b' }, labelStyle: { fill: '#334155', fontSize: 11, fontWeight: 600 } };
-    }).filter(Boolean), [relationships, hoveredEdgeId, columnToTableMap]);
+        const isSelected = selectedEdgeId === String(relationship.id);
+        return {
+            id: String(relationship.id),
+            source: String(sourceTableId),
+            target: String(targetTableId),
+            sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'),
+            targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'),
+            type: 'default',
+            label: relationshipLabel(relationship.type),
+            animated: false,
+            data: { type: relationship.type },
+            style: {
+                strokeDasharray: '5 5',
+                strokeWidth: isSelected ? 3 : 2,
+                stroke: relationship.color || '#64748b',
+            },
+            labelStyle: { fill: '#334155', fontSize: 11, fontWeight: 600 },
+        };
+    }).filter(Boolean), [relationships, selectedEdgeId, columnToTableMap]);
 
-    const onNodesChange = useCallback((changes) => setNodes((current) => applyNodeChanges(changes, current)), []);
+    const onNodesChange = useCallback((changes) => {
+        setNodes((current) => applyNodeChanges(changes, current));
+    }, []);
 
     const onConnect = useCallback((connection) => {
         if (!editMode) return;
@@ -175,27 +282,52 @@ export default function DiagramEditor() {
 
     const onEdgeClick = useCallback((_, edge) => {
         if (!editMode) return;
+        setSelectedEdgeId(String(edge.id));
+    }, [editMode]);
+
+    const onEdgeDoubleClick = useCallback((_, edge) => {
+        if (!editMode) return;
         const relationship = relationships.find((entry) => String(entry.id) === String(edge.id));
         if (!relationship) return;
         setRelationshipDraft(relationship);
         setRelationshipModalState({ open: true, mode: 'edit', type: relationship.type ?? 'one_to_many' });
     }, [editMode, relationships]);
 
+    const deleteSelectedRelationship = useCallback(async () => {
+        if (!editMode || !selectedEdgeId) return;
+        const previousRelationships = relationships;
+        const nextRelationships = relationships.filter((relationship) => String(relationship.id) !== String(selectedEdgeId));
+        commitEditorState(tables, nextRelationships, tables, previousRelationships);
+        setSelectedEdgeId(null);
+        try {
+            setSavingState('Saving...');
+            await api.delete(`/api/v1/diagram-relationships/${selectedEdgeId}`);
+            setSavingState('Autosaved');
+        } catch (deleteError) {
+            setRelationships(previousRelationships);
+            setSavingState('Error');
+            setError(deleteError.message || 'Failed to delete relationship.');
+        }
+    }, [commitEditorState, editMode, relationships, selectedEdgeId, tables]);
+
     const submitRelationship = async (event) => {
         event.preventDefault();
         if (!relationshipDraft) return;
         if (relationshipModalState.mode === 'create') {
             try {
+                const relationshipColors = relationships.map((relationship) => relationship.color).filter(Boolean);
+                const color = pickNextColor(relationshipColors);
                 setSavingState('Saving...');
                 const response = await api.post('/api/v1/diagram-relationships', { diagram_id: Number(diagramId), from_column_id: relationshipDraft.from_column_id, to_column_id: relationshipDraft.to_column_id, type: relationshipModalState.type });
-                const created = response?.data ?? response;
-                setRelationships((current) => [...current, { ...created, sourceHandle: relationshipDraft.sourceHandle, targetHandle: relationshipDraft.targetHandle }]);
+                const created = { ...(response?.data ?? response), sourceHandle: relationshipDraft.sourceHandle, targetHandle: relationshipDraft.targetHandle, color };
+                commitEditorState(tables, [...relationships, created], tables, relationships);
                 setSavingState('Autosaved');
             } catch (connectError) { setSavingState('Error'); setError(connectError.message || 'Failed to create relationship.'); }
         } else {
             const relationshipId = relationshipDraft.id;
             const previous = relationships;
-            setRelationships((current) => current.map((item) => (item.id === relationshipId ? { ...item, type: relationshipModalState.type } : item)));
+            const nextRelationships = relationships.map((item) => (item.id === relationshipId ? { ...item, type: relationshipModalState.type } : item));
+            commitEditorState(tables, nextRelationships, tables, previous);
             try { setSavingState('Saving...'); await api.patch(`/api/v1/diagram-relationships/${relationshipId}`, { type: relationshipModalState.type }); setSavingState('Autosaved'); }
             catch (updateError) { setRelationships(previous); setSavingState('Error'); setError(updateError.message || 'Failed to update relationship.'); }
         }
@@ -204,17 +336,20 @@ export default function DiagramEditor() {
     };
 
     const onNodeDragStop = useCallback(async (_, node) => {
+        const previousTables = tables;
+        const nextTables = tables.map((table) => (String(table.id) === String(node.id) ? { ...table, x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) } : table));
+        commitEditorState(nextTables, relationships, previousTables, relationships);
         try {
             setSavingState('Saving...');
             await api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) });
-            setTables((current) => current.map((table) => (String(table.id) === String(node.id) ? { ...table, x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) } : table)));
             setSavingState('Autosaved');
         } catch (dragError) {
+            setTables(previousTables);
             setSavingState('Error');
             if (dragError?.status === 401) return handle401();
             setError(dragError.message || 'Failed to update table position.');
         }
-    }, [handle401]);
+    }, [commitEditorState, handle401, relationships, tables]);
 
     const handleViewportSave = useCallback((viewport) => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
@@ -238,26 +373,49 @@ export default function DiagramEditor() {
         }
     };
 
-    const submitAddTable = async (event) => { event.preventDefault(); if (!editMode) return; setFormErrors({}); try { setSavingState('Saving...'); const response = await api.post('/api/v1/diagram-tables', { diagram_id: Number(diagramId), name: addTableForm.name, schema: addTableForm.schema || null, x: 120, y: 120, w: defaultTableSize.w, h: defaultTableSize.h }); setTables((current) => [...current, normalizeTable(response?.data ?? response)]); setShowAddTableModal(false); setAddTableForm({ name: '', schema: '' }); setSavingState('Autosaved'); } catch (submitError) { setSavingState('Error'); const validationErrors = submitError?.payload?.errors ?? {}; setFormErrors(Object.keys(validationErrors).length ? validationErrors : { general: [submitError.message || 'Failed to create table.'] }); } };
+    const submitAddTable = async (event) => {
+        event.preventDefault();
+        if (!editMode) return;
+        setFormErrors({});
+        try {
+            const tableColors = tables.map((table) => table.color).filter(Boolean);
+            const color = pickNextColor(tableColors);
+            setSavingState('Saving...');
+            const response = await api.post('/api/v1/diagram-tables', { diagram_id: Number(diagramId), name: addTableForm.name, schema: addTableForm.schema || null, color, x: 120, y: 120, w: defaultTableSize.w, h: defaultTableSize.h });
+            const nextTables = [...tables, { ...normalizeTable(response?.data ?? response), color }];
+            commitEditorState(nextTables, relationships, tables, relationships);
+            setShowAddTableModal(false);
+            setAddTableForm({ name: '', schema: '' });
+            setSavingState('Autosaved');
+        } catch (submitError) {
+            setSavingState('Error');
+            const validationErrors = submitError?.payload?.errors ?? {};
+            setFormErrors(Object.keys(validationErrors).length ? validationErrors : { general: [submitError.message || 'Failed to create table.'] });
+        }
+    };
 
     const submitAddColumn = async (event, submittedForm = addColumnForm) => {
         event.preventDefault();
         if (!editMode) return;
         const sourceForm = submittedForm;
+        const previousTables = tables;
         setFormErrors({});
         try {
             setSavingState('Saving...');
             if (columnModalMode === 'create') {
                 const response = await api.post('/api/v1/diagram-columns', { diagram_table_id: Number(sourceForm.tableId), name: sourceForm.name, type: sourceForm.type, nullable: sourceForm.nullable, primary: sourceForm.primary, unique: sourceForm.unique, default: sourceForm.default || null });
                 const createdColumn = response?.data ?? response;
-                setTables((current) => current.map((table) => (String(table.id) === String(sourceForm.tableId) ? { ...table, columns: [...(table.columns ?? []), createdColumn] } : table)));
+                const nextTables = tables.map((table) => (String(table.id) === String(sourceForm.tableId) ? { ...table, columns: [...(table.columns ?? []), createdColumn] } : table));
+                commitEditorState(nextTables, relationships, previousTables, relationships);
             } else {
                 const response = await api.patch(`/api/v1/diagram-columns/${editingColumn.id}`, { name: sourceForm.name, type: sourceForm.type, nullable: sourceForm.nullable, primary: sourceForm.primary, unique: sourceForm.unique, default: sourceForm.default || null });
                 const updatedColumn = response?.data ?? response;
-                setTables((current) => current.map((table) => ({ ...table, columns: (table.columns ?? []).map((column) => (Number(column.id) === Number(updatedColumn.id) ? updatedColumn : column)) })));
+                const nextTables = tables.map((table) => ({ ...table, columns: (table.columns ?? []).map((column) => (Number(column.id) === Number(updatedColumn.id) ? updatedColumn : column)) }));
+                commitEditorState(nextTables, relationships, previousTables, relationships);
             }
             setShowAddColumnModal(false); setEditingColumn(null); setAddColumnForm(defaultColumnForm); setSavingState('Autosaved');
         } catch (submitError) {
+            setTables(previousTables);
             setSavingState('Error');
             const validationErrors = submitError?.payload?.errors ?? {};
             setFormErrors(Object.keys(validationErrors).length ? validationErrors : { general: [submitError.message || 'Failed to save column.'] });
@@ -330,6 +488,12 @@ export default function DiagramEditor() {
                         onExportImage={exportImage}
                         onNewDiagram={() => setShowNewModal(true)}
                         onOpenDiagram={() => setShowOpenModal(true)}
+                        onUndo={undoHistory}
+                        onRedo={redoHistory}
+                        canUndo={canUndo}
+                        canRedo={canRedo}
+                        onDeleteRelationship={deleteSelectedRelationship}
+                        canDeleteRelationship={editMode && Boolean(selectedEdgeId)}
                     />
 
                     {!editMode && <div className="mx-4 mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">View mode</div>}
@@ -353,9 +517,9 @@ export default function DiagramEditor() {
                             onNodeDragStop={onNodeDragStop}
                             onConnect={onConnect}
                             onEdgeClick={onEdgeClick}
+                            onEdgeDoubleClick={onEdgeDoubleClick}
+                            onPaneClick={() => setSelectedEdgeId(null)}
                             onMoveEnd={(_, viewport) => handleViewportSave(viewport)}
-                            onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
-                            onEdgeMouseLeave={() => setHoveredEdgeId(null)}
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={{ type: 'bezier' }}
                             connectionMode="strict"
