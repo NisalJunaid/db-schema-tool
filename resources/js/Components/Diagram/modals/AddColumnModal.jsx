@@ -1,41 +1,72 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { COLUMN_PRESETS, COLUMN_TYPE_OPTIONS } from '@/Components/Diagram/utils';
 
-export default function AddColumnModal({ isOpen, mode = 'create', form, column, onChange, onClose, onSubmit, errors = {} }) {
+const emptyColumnForm = {
+    tableId: '',
+    preset: '',
+    name: '',
+    type: 'VARCHAR(255)',
+    nullable: false,
+    primary: false,
+    unique: false,
+    default: '',
+};
+
+export default function AddColumnModal({ isOpen, mode = 'create', form, column, onClose, onSubmit, errors = {} }) {
+    const [localForm, setLocalForm] = useState(form ?? emptyColumnForm);
+
     useEffect(() => {
-        if (!isOpen || mode !== 'edit' || !column) {
+        if (!isOpen) {
             return;
         }
 
-        onChange('name', column.name ?? '');
-        onChange('type', column.type ?? 'VARCHAR(255)');
-        onChange('nullable', Boolean(column.nullable));
-        onChange('primary', Boolean(column.primary));
-        onChange('unique', Boolean(column.unique));
-        onChange('default', column.default ?? '');
-        onChange('preset', '');
-    }, [isOpen, mode, column, onChange]);
+        if (mode === 'edit' && column) {
+            setLocalForm({
+                tableId: String(column.diagram_table_id ?? form?.tableId ?? ''),
+                preset: '',
+                name: column.name ?? '',
+                type: column.type ?? 'VARCHAR(255)',
+                nullable: Boolean(column.nullable),
+                primary: Boolean(column.primary),
+                unique: Boolean(column.unique),
+                default: column.default ?? '',
+            });
+            return;
+        }
+
+        setLocalForm(form ?? emptyColumnForm);
+    }, [isOpen, mode, column, form]);
 
     if (!isOpen) {
         return null;
     }
 
+    const setField = (field, value) => {
+        setLocalForm((current) => ({ ...current, [field]: value }));
+    };
+
     const applyPreset = (presetKey) => {
         const preset = COLUMN_PRESETS.find((entry) => entry.key === presetKey);
 
         if (!preset) {
+            setField('preset', presetKey);
             return;
         }
 
-        onChange('preset', presetKey);
-        onChange('name', preset.name);
-        onChange('type', preset.type);
-        onChange('nullable', preset.nullable);
-        onChange('primary', preset.primary);
-        onChange('unique', preset.unique);
-        if (Object.prototype.hasOwnProperty.call(preset, 'default')) {
-            onChange('default', preset.default ?? '');
-        }
+        setLocalForm((current) => ({
+            ...current,
+            preset: presetKey,
+            name: preset.name,
+            type: preset.type,
+            nullable: preset.nullable,
+            primary: preset.primary,
+            unique: preset.unique,
+            default: Object.prototype.hasOwnProperty.call(preset, 'default') ? (preset.default ?? '') : current.default,
+        }));
+    };
+
+    const handleSubmit = (event) => {
+        onSubmit(event, localForm);
     };
 
     return (
@@ -43,11 +74,11 @@ export default function AddColumnModal({ isOpen, mode = 'create', form, column, 
             <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
                 <h2 className="text-lg font-semibold text-slate-900">{mode === 'edit' ? 'Edit field' : 'Add field'}</h2>
 
-                <form className="mt-4 space-y-4" onSubmit={onSubmit}>
+                <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
                     <div>
                         <label className="mb-1 block text-sm font-medium text-slate-700">Preset</label>
                         <select
-                            value={form.preset}
+                            value={localForm.preset}
                             onChange={(event) => applyPreset(event.target.value)}
                             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         >
@@ -65,8 +96,8 @@ export default function AddColumnModal({ isOpen, mode = 'create', form, column, 
                             <label className="mb-1 block text-sm font-medium text-slate-700">Field name</label>
                             <input
                                 required
-                                value={form.name}
-                                onChange={(event) => onChange('name', event.target.value)}
+                                value={localForm.name}
+                                onChange={(event) => setField('name', event.target.value)}
                                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                             />
                         </div>
@@ -75,8 +106,8 @@ export default function AddColumnModal({ isOpen, mode = 'create', form, column, 
                             <label className="mb-1 block text-sm font-medium text-slate-700">Type</label>
                             <select
                                 required
-                                value={form.type}
-                                onChange={(event) => onChange('type', event.target.value)}
+                                value={localForm.type}
+                                onChange={(event) => setField('type', event.target.value)}
                                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                             >
                                 {COLUMN_TYPE_OPTIONS.map((option) => (
@@ -91,8 +122,8 @@ export default function AddColumnModal({ isOpen, mode = 'create', form, column, 
                     <div>
                         <label className="mb-1 block text-sm font-medium text-slate-700">Default (optional)</label>
                         <input
-                            value={form.default}
-                            onChange={(event) => onChange('default', event.target.value)}
+                            value={localForm.default}
+                            onChange={(event) => setField('default', event.target.value)}
                             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         />
                     </div>
@@ -106,8 +137,8 @@ export default function AddColumnModal({ isOpen, mode = 'create', form, column, 
                             <label key={field} className="flex items-center gap-2">
                                 <input
                                     type="checkbox"
-                                    checked={Boolean(form[field])}
-                                    onChange={(event) => onChange(field, event.target.checked)}
+                                    checked={Boolean(localForm[field])}
+                                    onChange={(event) => setField(field, event.target.checked)}
                                 />
                                 {label}
                             </label>

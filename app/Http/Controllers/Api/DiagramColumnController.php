@@ -7,6 +7,7 @@ use App\Models\DiagramColumn;
 use App\Models\DiagramTable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
 
 class DiagramColumnController extends Controller
@@ -65,7 +66,7 @@ class DiagramColumnController extends Controller
         return response()->json($diagramColumn->fresh());
     }
 
-    public function destroy(DiagramColumn $diagramColumn): JsonResponse
+    public function destroy(DiagramColumn $diagramColumn): Response
     {
         $this->authorize('update', $diagramColumn->diagramTable->diagram);
 
