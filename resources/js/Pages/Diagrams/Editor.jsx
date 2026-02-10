@@ -9,6 +9,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import TableNode from '@/Components/TableNode';
 
 const API_PREFIX = '/api/api/v1';
 
@@ -24,7 +25,7 @@ const tableToNode = (table) => ({
         schema: table.schema,
         columns: Array.isArray(table.diagram_columns) ? table.diagram_columns : [],
     },
-    type: 'default',
+    type: 'table',
 });
 
 const relationshipToEdge = (relationship, columnToTableId) => {
@@ -55,6 +56,8 @@ export default function Editor({ diagramId }) {
     const [error, setError] = useState('');
 
     const resolvedDiagramId = useMemo(() => String(diagramId ?? ''), [diagramId]);
+
+    const nodeTypes = useMemo(() => ({ table: TableNode }), []);
 
     const loadDiagram = useCallback(async () => {
         if (!resolvedDiagramId) {
@@ -129,6 +132,7 @@ export default function Editor({ diagramId }) {
                             onNodesChange={onNodesChange}
                             onEdgesChange={onEdgesChange}
                             onNodeDragStop={onNodeDragStop}
+                            nodeTypes={nodeTypes}
                             fitView
                             nodesDraggable
                             nodesConnectable
