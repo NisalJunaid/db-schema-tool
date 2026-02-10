@@ -41,7 +41,7 @@ class DiagramController extends Controller
     {
         $validated = $request->validate([
             'owner_type' => ['required', 'string', Rule::in(['user', 'team'])],
-            'owner_id' => ['required', 'integer', 'min:1'],
+            'owner_id' => ['nullable', 'integer', 'min:1'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'viewport' => ['nullable', 'array'],

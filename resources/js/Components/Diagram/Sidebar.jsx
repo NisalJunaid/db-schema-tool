@@ -104,7 +104,7 @@ export default function Sidebar({
                 </div>
             </div>
 
-            <div className="flex-1 space-y-2 overflow-y-auto p-3">
+            <div className="sidebar-scroll flex-1 space-y-2 overflow-y-auto p-3">
                 {filteredTables.map((table) => {
                     const expanded = expandedTables[table.id] ?? true;
                     const colorMeta = getTableColorMeta(table.color);
