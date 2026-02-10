@@ -1,7 +1,22 @@
+import { useEffect } from 'react';
 import { COLUMN_PRESETS, COLUMN_TYPE_OPTIONS } from '@/Components/Diagram/utils';
 
-export default function AddColumnModal({ open, form, onChange, onClose, onSubmit, errors = {} }) {
-    if (!open) {
+export default function AddColumnModal({ isOpen, mode = 'create', form, column, onChange, onClose, onSubmit, errors = {} }) {
+    useEffect(() => {
+        if (!isOpen || mode !== 'edit' || !column) {
+            return;
+        }
+
+        onChange('name', column.name ?? '');
+        onChange('type', column.type ?? 'VARCHAR(255)');
+        onChange('nullable', Boolean(column.nullable));
+        onChange('primary', Boolean(column.primary));
+        onChange('unique', Boolean(column.unique));
+        onChange('default', column.default ?? '');
+        onChange('preset', '');
+    }, [isOpen, mode, column, onChange]);
+
+    if (!isOpen) {
         return null;
     }
 
@@ -26,7 +41,7 @@ export default function AddColumnModal({ open, form, onChange, onClose, onSubmit
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
             <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
-                <h2 className="text-lg font-semibold text-slate-900">Add column</h2>
+                <h2 className="text-lg font-semibold text-slate-900">{mode === 'edit' ? 'Edit field' : 'Add field'}</h2>
 
                 <form className="mt-4 space-y-4" onSubmit={onSubmit}>
                     <div>
@@ -47,7 +62,7 @@ export default function AddColumnModal({ open, form, onChange, onClose, onSubmit
 
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="mb-1 block text-sm font-medium text-slate-700">Column name</label>
+                            <label className="mb-1 block text-sm font-medium text-slate-700">Field name</label>
                             <input
                                 required
                                 value={form.name}
@@ -91,7 +106,7 @@ export default function AddColumnModal({ open, form, onChange, onClose, onSubmit
                             <label key={field} className="flex items-center gap-2">
                                 <input
                                     type="checkbox"
-                                    checked={form[field]}
+                                    checked={Boolean(form[field])}
                                     onChange={(event) => onChange(field, event.target.checked)}
                                 />
                                 {label}
@@ -99,14 +114,16 @@ export default function AddColumnModal({ open, form, onChange, onClose, onSubmit
                         ))}
                     </div>
 
-                    {errors?.general?.[0] && <p className="text-sm text-red-600">{errors.general[0]}</p>}
+                    {(errors?.name?.[0] || errors?.general?.[0]) && (
+                        <p className="text-sm text-red-600">{errors?.name?.[0] ?? errors?.general?.[0]}</p>
+                    )}
 
                     <div className="flex justify-end gap-2">
                         <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm">
                             Cancel
                         </button>
-                        <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white">
-                            Add column
+                        <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">
+                            {mode === 'edit' ? 'Save field' : 'Add field'}
                         </button>
                     </div>
                 </form>

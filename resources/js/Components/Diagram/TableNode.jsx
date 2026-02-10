@@ -1,15 +1,20 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { Handle, Position } from 'reactflow';
-import { toColumnHandleId } from '@/Components/Diagram/utils';
+import ColorPicker from '@/Components/Diagram/ColorPicker';
+import { getTableColorMeta, toColumnHandleId } from '@/Components/Diagram/utils';
 
 function TableNode({ data }) {
     const table = data?.table ?? {};
     const columns = useMemo(() => (Array.isArray(table.columns) ? table.columns : []), [table.columns]);
     const editMode = Boolean(data?.editMode);
+    const isActive = Boolean(data?.isActiveEditTable);
     const selectedColumnId = data?.selectedColumnId ?? null;
 
     const [isEditingName, setIsEditingName] = useState(false);
+    const [showColors, setShowColors] = useState(false);
     const [localName, setLocalName] = useState(table.name ?? '');
+
+    const colorMeta = getTableColorMeta(table.color);
 
     useEffect(() => {
         setLocalName(table.name ?? '');
@@ -18,6 +23,7 @@ function TableNode({ data }) {
     useEffect(() => {
         if (!editMode) {
             setIsEditingName(false);
+            setShowColors(false);
         }
     }, [editMode]);
 
@@ -40,39 +46,68 @@ function TableNode({ data }) {
 
     return (
         <div className="min-w-[320px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
-                {isEditingName && editMode ? (
-                    <input
-                        autoFocus
-                        value={localName}
-                        onChange={(event) => setLocalName(event.target.value)}
-                        onBlur={commitRename}
-                        onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                                event.currentTarget.blur();
-                            }
-                            if (event.key === 'Escape') {
-                                setLocalName(table.name ?? '');
-                                setIsEditingName(false);
-                            }
-                        }}
-                        className="w-full rounded-md border border-indigo-300 px-2 py-1 text-sm font-semibold text-slate-900 focus:outline-none"
-                    />
-                ) : (
-                    <h3 className="truncate pr-2 text-sm font-semibold text-slate-900">{table.name}</h3>
-                )}
+            <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2" style={{ backgroundColor: colorMeta.tint }}>
+                <div className="flex min-w-0 items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorMeta.solid }} />
+                    {isEditingName && editMode && isActive ? (
+                        <input
+                            autoFocus
+                            value={localName}
+                            onChange={(event) => setLocalName(event.target.value)}
+                            onBlur={commitRename}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                    event.currentTarget.blur();
+                                }
+                                if (event.key === 'Escape') {
+                                    setLocalName(table.name ?? '');
+                                    setIsEditingName(false);
+                                }
+                            }}
+                            className="w-full rounded-md border border-indigo-300 px-2 py-1 text-sm font-semibold text-slate-900 focus:outline-none"
+                        />
+                    ) : (
+                        <h3 className="truncate pr-2 text-sm font-semibold text-slate-900">{table.name}</h3>
+                    )}
+                </div>
 
-                <button
-                    type="button"
-                    disabled={!editMode}
-                    onClick={() => editMode && setIsEditingName((current) => !current)}
-                    className="rounded-md p-1 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-                    title={editMode ? 'Rename table' : 'Enable edit mode to rename'}
-                >
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                        <path d="M5 13.586V15h1.414l8.293-8.293-1.414-1.414L5 13.586ZM16.414 4.586a2 2 0 0 0-2.828 0l-.586.586 1.414 1.414.586-.586a2 2 0 0 0 0-2.828Z" />
-                    </svg>
-                </button>
+                {editMode && (
+                    <div className="relative flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                data?.onSetActiveEditTable?.(table.id);
+                                setShowColors((current) => !current);
+                            }}
+                            className="rounded-md p-1 text-slate-500 transition hover:bg-white/70 hover:text-slate-700"
+                            title="Table color"
+                        >
+                            <span className="block h-3.5 w-3.5 rounded-full border border-white" style={{ backgroundColor: colorMeta.solid }} />
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                data?.onSetActiveEditTable?.(table.id);
+                                setIsEditingName((current) => !current);
+                            }}
+                            className={`rounded-md p-1 transition ${
+                                isActive ? 'bg-white/80 text-indigo-700' : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'
+                            }`}
+                            title="Edit table"
+                        >
+                            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                                <path d="M5 13.586V15h1.414l8.293-8.293-1.414-1.414L5 13.586ZM16.414 4.586a2 2 0 0 0-2.828 0l-.586.586 1.414 1.414.586-.586a2 2 0 0 0 0-2.828Z" />
+                            </svg>
+                        </button>
+
+                        {showColors && (
+                            <div className="absolute right-0 top-8 z-20 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+                                <ColorPicker value={table.color ?? null} onChange={(color) => data?.onUpdateTableColor?.(table.id, color)} />
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div className="divide-y divide-slate-100">
@@ -102,6 +137,25 @@ function TableNode({ data }) {
                                 <span className="shrink-0 text-slate-500">{column.type ?? 'string'}</span>
                             </div>
 
+                            {editMode && isActive && (
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => data?.onEditColumn?.(column)}
+                                        className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                                    >
+                                        ✎
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => data?.onDeleteColumn?.(column.id)}
+                                        className="rounded p-1 text-rose-500 hover:bg-rose-50"
+                                    >
+                                        🗑
+                                    </button>
+                                </div>
+                            )}
+
                             <Handle
                                 id={outputHandleId}
                                 type="source"
@@ -115,14 +169,14 @@ function TableNode({ data }) {
                 })}
             </div>
 
-            {editMode && (
+            {editMode && isActive && (
                 <div className="border-t border-slate-200 px-3 py-2">
                     <button
                         type="button"
                         onClick={() => data?.onAddColumn?.(table.id)}
                         className="w-full rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
                     >
-                        + Add column
+                        + Add field
                     </button>
                 </div>
             )}

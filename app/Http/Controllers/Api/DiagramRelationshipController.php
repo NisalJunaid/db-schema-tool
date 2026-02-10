@@ -46,9 +46,34 @@ class DiagramRelationshipController extends Controller
             ]);
         }
 
+        $exists = DiagramRelationship::query()
+            ->where('diagram_id', $diagram->getKey())
+            ->where('from_column_id', $validated['from_column_id'])
+            ->where('to_column_id', $validated['to_column_id'])
+            ->exists();
+
+        if ($exists) {
+            throw ValidationException::withMessages([
+                'to_column_id' => ['This relationship already exists.'],
+            ]);
+        }
+
         $relationship = DiagramRelationship::create($validated);
 
         return response()->json($relationship, 201);
+    }
+
+    public function update(Request $request, DiagramRelationship $diagramRelationship): JsonResponse
+    {
+        $this->authorize('update', $diagramRelationship->diagram);
+
+        $validated = $request->validate([
+            'type' => ['required', Rule::in(['one_to_one', 'one_to_many', 'many_to_many'])],
+        ]);
+
+        $diagramRelationship->update($validated);
+
+        return response()->json($diagramRelationship->fresh());
     }
 
     public function destroy(DiagramRelationship $diagramRelationship): JsonResponse

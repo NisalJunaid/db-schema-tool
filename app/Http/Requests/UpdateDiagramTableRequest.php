@@ -29,6 +29,7 @@ class UpdateDiagramTableRequest extends FormRequest
                     ->where(fn ($query) => $query->where('diagram_id', $diagramTable->diagram_id)),
             ],
             'schema' => ['nullable', 'string', 'max:255'],
+            'color' => ['nullable', 'string', 'max:50'],
             'x' => ['sometimes', 'required', 'integer'],
             'y' => ['sometimes', 'required', 'integer'],
             'w' => ['sometimes', 'required', 'integer'],
