@@ -1,5 +1,5 @@
 import { Head } from '@inertiajs/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
     MarkerType,
     Background,
@@ -71,6 +71,12 @@ export default function Editor({ diagramId }) {
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [saveState, setSaveState] = useState('saved');
+    const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+    const [hasSavedViewport, setHasSavedViewport] = useState(false);
+
+    const positionSaveTimersRef = useRef(new Map());
+    const viewportSaveTimerRef = useRef(null);
 
     const resolvedDiagramId = useMemo(() => String(diagramId ?? ''), [diagramId]);
 
@@ -104,6 +110,18 @@ export default function Editor({ diagramId }) {
                     .map((relationship) => relationshipToEdge(relationship, columnToTableId))
                     .filter(Boolean)
             );
+
+            if (data?.viewport) {
+                setViewport({
+                    x: Number(data.viewport.x ?? 0),
+                    y: Number(data.viewport.y ?? 0),
+                    zoom: Number(data.viewport.zoom ?? 1),
+                });
+                setHasSavedViewport(true);
+            } else {
+                setViewport({ x: 0, y: 0, zoom: 1 });
+                setHasSavedViewport(false);
+            }
         } catch (fetchError) {
             setError(fetchError?.response?.data?.message ?? 'Unable to load diagram data.');
         } finally {
@@ -115,16 +133,84 @@ export default function Editor({ diagramId }) {
         loadDiagram();
     }, [loadDiagram]);
 
-    const onNodeDragStop = useCallback(async (_event, node) => {
+    useEffect(
+        () => () => {
+            positionSaveTimersRef.current.forEach((timerId) => {
+                window.clearTimeout(timerId);
+            });
+
+            if (viewportSaveTimerRef.current) {
+                window.clearTimeout(viewportSaveTimerRef.current);
+            }
+        },
+        []
+    );
+
+    const persistTablePosition = useCallback(async (node) => {
         try {
+            setSaveState('saving');
             await window.axios.patch(`${API_PREFIX}/diagram-tables/${node.id}`, {
                 x: Math.round(node.position.x),
                 y: Math.round(node.position.y),
             });
+            setSaveState('saved');
         } catch (_updateError) {
+            setSaveState('error');
             // Keep canvas responsive even if persistence fails.
         }
     }, []);
+
+    const onNodeDragStop = useCallback(
+        (_event, node) => {
+            const existingTimer = positionSaveTimersRef.current.get(node.id);
+
+            if (existingTimer) {
+                window.clearTimeout(existingTimer);
+            }
+
+            setSaveState('saving');
+
+            const timerId = window.setTimeout(() => {
+                positionSaveTimersRef.current.delete(node.id);
+                persistTablePosition(node);
+            }, 450);
+
+            positionSaveTimersRef.current.set(node.id, timerId);
+        },
+        [persistTablePosition]
+    );
+
+    const onMoveEnd = useCallback(
+        (_event, nextViewport) => {
+            if (!resolvedDiagramId || !nextViewport) {
+                return;
+            }
+
+            setViewport(nextViewport);
+
+            if (viewportSaveTimerRef.current) {
+                window.clearTimeout(viewportSaveTimerRef.current);
+            }
+
+            setSaveState('saving');
+
+            viewportSaveTimerRef.current = window.setTimeout(async () => {
+                try {
+                    await window.axios.patch(`${API_PREFIX}/diagrams/${resolvedDiagramId}`, {
+                        viewport: {
+                            x: Number(nextViewport.x),
+                            y: Number(nextViewport.y),
+                            zoom: Number(nextViewport.zoom),
+                        },
+                    });
+                    setSaveState('saved');
+                } catch (_saveError) {
+                    setSaveState('error');
+                }
+            }, 450);
+        },
+        [resolvedDiagramId]
+    );
 
     const onConnect = useCallback(
         async (connection) => {
@@ -219,8 +305,10 @@ export default function Editor({ diagramId }) {
                             onEdgesChange={onEdgesChange}
                             onConnect={onConnect}
                             onNodeDragStop={onNodeDragStop}
+                            onMoveEnd={onMoveEnd}
                             nodeTypes={nodeTypes}
-                            fitView
+                            defaultViewport={viewport}
+                            fitView={!hasSavedViewport}
                             nodesDraggable
                             nodesConnectable
                             elementsSelectable
@@ -234,6 +322,24 @@ export default function Editor({ diagramId }) {
                             <Background gap={16} size={1} />
                         </ReactFlow>
                     )}
+                </div>
+
+                <div className="mt-3 flex justify-end">
+                    <span
+                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            saveState === 'saving'
+                                ? 'bg-amber-100 text-amber-800'
+                                : saveState === 'error'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-emerald-100 text-emerald-700'
+                        }`}
+                    >
+                        {saveState === 'saving'
+                            ? 'Saving…'
+                            : saveState === 'error'
+                              ? 'Save failed'
+                              : 'All changes saved'}
+                    </span>
                 </div>
             </div>
         </AuthenticatedLayout>
