@@ -1,14 +1,15 @@
 import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
-    MarkerType,
     Background,
     Controls,
     MiniMap,
+    MarkerType,
     addEdge,
     useEdgesState,
     useNodesState,
 } from 'reactflow';
+
 import 'reactflow/dist/style.css';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import TableNode from '@/Components/TableNode';
