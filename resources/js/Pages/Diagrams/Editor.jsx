@@ -185,20 +185,24 @@ export default function DiagramEditor() {
         [editMode, tables],
     );
 
+    const onToggleActiveEditTable = useCallback((tableId) => {
+        setActiveEditTableId((current) => (Number(current) === Number(tableId) ? null : tableId));
+    }, []);
+
     const buildNodeData = useCallback(
         (table) => ({
             table,
             editMode,
             selectedColumnId,
             isActiveEditTable: Number(activeEditTableId) === Number(table.id),
-            onSetActiveEditTable: setActiveEditTableId,
+            onToggleActiveEditTable,
             onRenameTable,
             onUpdateTableColor,
             onAddColumn,
             onEditColumn,
             onDeleteColumn,
         }),
-        [activeEditTableId, editMode, onAddColumn, onDeleteColumn, onEditColumn, onRenameTable, onUpdateTableColor, selectedColumnId],
+        [activeEditTableId, editMode, onAddColumn, onDeleteColumn, onEditColumn, onRenameTable, onToggleActiveEditTable, onUpdateTableColor, selectedColumnId],
     );
 
     useEffect(() => {
@@ -491,11 +495,13 @@ export default function DiagramEditor() {
         }
     };
 
-    const submitAddColumn = async (event) => {
+    const submitAddColumn = async (event, submittedForm = addColumnForm) => {
         event.preventDefault();
         if (!editMode) {
             return;
         }
+
+        const sourceForm = submittedForm;
 
         setFormErrors({});
 
@@ -503,31 +509,31 @@ export default function DiagramEditor() {
             setSavingState('Saving...');
             if (columnModalMode === 'create') {
                 const response = await api.post('/api/v1/diagram-columns', {
-                    diagram_table_id: Number(addColumnForm.tableId),
-                    name: addColumnForm.name,
-                    type: addColumnForm.type,
-                    nullable: addColumnForm.nullable,
-                    primary: addColumnForm.primary,
-                    unique: addColumnForm.unique,
-                    default: addColumnForm.default || null,
+                    diagram_table_id: Number(sourceForm.tableId),
+                    name: sourceForm.name,
+                    type: sourceForm.type,
+                    nullable: sourceForm.nullable,
+                    primary: sourceForm.primary,
+                    unique: sourceForm.unique,
+                    default: sourceForm.default || null,
                 });
 
                 const createdColumn = response?.data ?? response;
                 setTables((current) =>
                     current.map((table) =>
-                        String(table.id) === String(addColumnForm.tableId)
+                        String(table.id) === String(sourceForm.tableId)
                             ? { ...table, columns: [...(table.columns ?? []), createdColumn] }
                             : table,
                     ),
                 );
             } else {
                 const response = await api.patch(`/api/v1/diagram-columns/${editingColumn.id}`, {
-                    name: addColumnForm.name,
-                    type: addColumnForm.type,
-                    nullable: addColumnForm.nullable,
-                    primary: addColumnForm.primary,
-                    unique: addColumnForm.unique,
-                    default: addColumnForm.default || null,
+                    name: sourceForm.name,
+                    type: sourceForm.type,
+                    nullable: sourceForm.nullable,
+                    primary: sourceForm.primary,
+                    unique: sourceForm.unique,
+                    default: sourceForm.default || null,
                 });
                 const updatedColumn = response?.data ?? response;
                 setTables((current) =>
@@ -706,7 +712,6 @@ export default function DiagramEditor() {
                 form={addColumnForm}
                 column={editingColumn}
                 errors={formErrors}
-                onChange={(field, value) => setAddColumnForm((current) => ({ ...current, [field]: value }))}
                 onClose={() => {
                     setShowAddColumnModal(false);
                     setEditingColumn(null);

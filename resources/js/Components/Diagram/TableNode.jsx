@@ -75,8 +75,8 @@ function TableNode({ data }) {
                     <div className="relative flex items-center gap-1">
                         <button
                             type="button"
-                            onClick={() => {
-                                data?.onSetActiveEditTable?.(table.id);
+                            onClick={(event) => {
+                                event.stopPropagation();
                                 setShowColors((current) => !current);
                             }}
                             className="rounded-md p-1 text-slate-500 transition hover:bg-white/70 hover:text-slate-700"
@@ -87,9 +87,16 @@ function TableNode({ data }) {
 
                         <button
                             type="button"
-                            onClick={() => {
-                                data?.onSetActiveEditTable?.(table.id);
-                                setIsEditingName((current) => !current);
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                data?.onToggleActiveEditTable?.(table.id);
+                                if (isActive) {
+                                    setIsEditingName(false);
+                                    setShowColors(false);
+                                    return;
+                                }
+
+                                setIsEditingName(true);
                             }}
                             className={`rounded-md p-1 transition ${
                                 isActive ? 'bg-white/80 text-indigo-700' : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'
@@ -102,7 +109,7 @@ function TableNode({ data }) {
                         </button>
 
                         {showColors && (
-                            <div className="absolute right-0 top-8 z-20 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+                            <div className="absolute right-0 top-8 z-20 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-xl" onClick={(event) => event.stopPropagation()}>
                                 <ColorPicker value={table.color ?? null} onChange={(color) => data?.onUpdateTableColor?.(table.id, color)} />
                             </div>
                         )}
