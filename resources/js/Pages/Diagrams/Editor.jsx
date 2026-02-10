@@ -112,6 +112,11 @@ export default function DiagramEditor() {
                     setSavingState('saved');
                 } catch (renameError) {
                     setSavingState('error');
+                    if (renameError?.status === 401) {
+                        setError('Your session has expired. Please sign in again to continue editing.');
+                        return;
+                    }
+
                     setError(renameError.message || 'Failed to rename table.');
                 }
             },
@@ -168,6 +173,11 @@ export default function DiagramEditor() {
                 const response = await apiRequest(`/api/v1/diagrams/${diagramId}`);
                 hydrateDiagram(response);
             } catch (loadError) {
+                if (loadError?.status === 401) {
+                    setError('Your session has expired. Please sign in again to continue editing.');
+                    return;
+                }
+
                 setError(loadError.message || 'Unable to load diagram.');
             } finally {
                 setLoading(false);
@@ -213,6 +223,11 @@ export default function DiagramEditor() {
                 setSavingState('saved');
             } catch (connectError) {
                 setSavingState('error');
+                if (connectError?.status === 401) {
+                    setError('Your session has expired. Please sign in again to continue editing.');
+                    return;
+                }
+
                 setError(connectError.message || 'Failed to create relationship.');
             }
         },
@@ -234,6 +249,11 @@ export default function DiagramEditor() {
             setSavingState('saved');
         } catch (dragError) {
             setSavingState('error');
+            if (dragError?.status === 401) {
+                setError('Your session has expired. Please sign in again to continue editing.');
+                return;
+            }
+
             setError(dragError.message || 'Failed to update table position.');
         }
     }, []);
@@ -264,6 +284,12 @@ export default function DiagramEditor() {
             setAddTableForm({ name: '', schema: '' });
             setSavingState('saved');
         } catch (submitError) {
+            if (submitError?.status === 401) {
+                setFormErrors({ general: ['Your session has expired. Please sign in again.'] });
+                setSavingState('error');
+                return;
+            }
+
             const validationErrors = submitError?.payload?.errors ?? {};
             setFormErrors(validationErrors);
             setSavingState('error');
@@ -323,6 +349,12 @@ export default function DiagramEditor() {
             });
             setSavingState('saved');
         } catch (submitError) {
+            if (submitError?.status === 401) {
+                setFormErrors({ general: ['Your session has expired. Please sign in again.'] });
+                setSavingState('error');
+                return;
+            }
+
             const validationErrors = submitError?.payload?.errors ?? {};
             setFormErrors(validationErrors);
             setSavingState('error');
