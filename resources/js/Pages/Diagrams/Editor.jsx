@@ -1,9 +1,9 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, useEdgesState, useNodesState } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/TableNode';
-import { apiRequest } from '@/lib/api';
+import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
 const defaultTableSize = { w: 320, h: 240 };
 
@@ -91,10 +91,7 @@ export default function DiagramEditor() {
             onRenameTable: async (tableId, name) => {
                 try {
                     setSavingState('saving');
-                    await apiRequest(`/api/v1/diagram-tables/${tableId}`, {
-                        method: 'PATCH',
-                        data: { name },
-                    });
+                    await api.patch(`/api/v1/diagram-tables/${tableId}`, { name });
 
                     setNodes((currentNodes) =>
                         currentNodes.map((node) =>
@@ -113,7 +110,7 @@ export default function DiagramEditor() {
                 } catch (renameError) {
                     setSavingState('error');
                     if (renameError?.status === 401) {
-                        setError('Your session has expired. Please sign in again to continue editing.');
+                        setError(`${SESSION_EXPIRED_MESSAGE} to continue editing.`);
                         return;
                     }
 
@@ -170,11 +167,11 @@ export default function DiagramEditor() {
             try {
                 setLoading(true);
                 setError('');
-                const response = await apiRequest(`/api/v1/diagrams/${diagramId}`);
+                const response = await api.get(`/api/v1/diagrams/${diagramId}`);
                 hydrateDiagram(response);
             } catch (loadError) {
                 if (loadError?.status === 401) {
-                    setError('Your session has expired. Please sign in again to continue editing.');
+                    setError(`${SESSION_EXPIRED_MESSAGE} to continue editing.`);
                     return;
                 }
 
@@ -198,14 +195,11 @@ export default function DiagramEditor() {
 
             try {
                 setSavingState('saving');
-                const response = await apiRequest('/api/v1/diagram-relationships', {
-                    method: 'POST',
-                    data: {
-                        diagram_id: diagramId,
-                        from_column_id: sourceColumnId,
-                        to_column_id: targetColumnId,
-                        type: 'one_to_many',
-                    },
+                const response = await api.post('/api/v1/diagram-relationships', {
+                    diagram_id: diagramId,
+                    from_column_id: sourceColumnId,
+                    to_column_id: targetColumnId,
+                    type: 'one_to_many',
                 });
 
                 const relationship = response?.data ?? response;
@@ -224,7 +218,7 @@ export default function DiagramEditor() {
             } catch (connectError) {
                 setSavingState('error');
                 if (connectError?.status === 401) {
-                    setError('Your session has expired. Please sign in again to continue editing.');
+                    setError(`${SESSION_EXPIRED_MESSAGE} to continue editing.`);
                     return;
                 }
 
@@ -237,20 +231,17 @@ export default function DiagramEditor() {
     const onNodeDragStop = useCallback(async (_, node) => {
         try {
             setSavingState('saving');
-            await apiRequest(`/api/v1/diagram-tables/${node.id}`, {
-                method: 'PATCH',
-                data: {
-                    x: Math.round(node.position.x),
-                    y: Math.round(node.position.y),
-                    w: Math.round(node.width ?? defaultTableSize.w),
-                    h: Math.round(node.height ?? defaultTableSize.h),
-                },
+            await api.patch(`/api/v1/diagram-tables/${node.id}`, {
+                x: Math.round(node.position.x),
+                y: Math.round(node.position.y),
+                w: Math.round(node.width ?? defaultTableSize.w),
+                h: Math.round(node.height ?? defaultTableSize.h),
             });
             setSavingState('saved');
         } catch (dragError) {
             setSavingState('error');
             if (dragError?.status === 401) {
-                setError('Your session has expired. Please sign in again to continue editing.');
+                setError(`${SESSION_EXPIRED_MESSAGE} to continue editing.`);
                 return;
             }
 
@@ -264,17 +255,14 @@ export default function DiagramEditor() {
 
         try {
             setSavingState('saving');
-            const response = await apiRequest('/api/v1/diagram-tables', {
-                method: 'POST',
-                data: {
-                    diagram_id: Number(diagramId),
-                    name: addTableForm.name,
-                    schema: addTableForm.schema || null,
-                    x: 120,
-                    y: 120,
-                    w: defaultTableSize.w,
-                    h: defaultTableSize.h,
-                },
+            const response = await api.post('/api/v1/diagram-tables', {
+                diagram_id: Number(diagramId),
+                name: addTableForm.name,
+                schema: addTableForm.schema || null,
+                x: 120,
+                y: 120,
+                w: defaultTableSize.w,
+                h: defaultTableSize.h,
             });
 
             const created = response?.data ?? response;
@@ -285,7 +273,7 @@ export default function DiagramEditor() {
             setSavingState('saved');
         } catch (submitError) {
             if (submitError?.status === 401) {
-                setFormErrors({ general: ['Your session has expired. Please sign in again.'] });
+                setFormErrors({ general: [SESSION_EXPIRED_MESSAGE] });
                 setSavingState('error');
                 return;
             }
@@ -305,17 +293,14 @@ export default function DiagramEditor() {
 
         try {
             setSavingState('saving');
-            const response = await apiRequest('/api/v1/diagram-columns', {
-                method: 'POST',
-                data: {
-                    diagram_table_id: Number(addColumnForm.tableId),
-                    name: addColumnForm.name,
-                    type: addColumnForm.type,
-                    nullable: addColumnForm.nullable,
-                    primary: addColumnForm.primary,
-                    unique: addColumnForm.unique,
-                    default: addColumnForm.default || null,
-                },
+            const response = await api.post('/api/v1/diagram-columns', {
+                diagram_table_id: Number(addColumnForm.tableId),
+                name: addColumnForm.name,
+                type: addColumnForm.type,
+                nullable: addColumnForm.nullable,
+                primary: addColumnForm.primary,
+                unique: addColumnForm.unique,
+                default: addColumnForm.default || null,
             });
 
             const createdColumn = response?.data ?? response;
@@ -350,7 +335,7 @@ export default function DiagramEditor() {
             setSavingState('saved');
         } catch (submitError) {
             if (submitError?.status === 401) {
-                setFormErrors({ general: ['Your session has expired. Please sign in again.'] });
+                setFormErrors({ general: [SESSION_EXPIRED_MESSAGE] });
                 setSavingState('error');
                 return;
             }
@@ -408,8 +393,15 @@ export default function DiagramEditor() {
                 </div>
 
                 {error && (
-                    <div className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        {error}
+                    <div className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        <span>{error}</span>
+                        <button
+                            type="button"
+                            onClick={() => router.get('/login')}
+                            className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                        >
+                            Sign in
+                        </button>
                     </div>
                 )}
 
