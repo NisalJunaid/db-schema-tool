@@ -1,24 +1,69 @@
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
+import { useCallback } from 'react';
+import ReactFlow, {
+    Background,
+    Controls,
+    MiniMap,
+    addEdge,
+    useEdgesState,
+    useNodesState,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
 
-export default function DiagramEditor({ diagramId }) {
+const initialNodes = [
+    {
+        id: 'demo-table-users',
+        type: 'default',
+        position: { x: 120, y: 100 },
+        data: {
+            label: (
+                <div className="space-y-1">
+                    <p className="font-semibold">users</p>
+                    <p className="text-xs text-slate-500">id, email, created_at</p>
+                </div>
+            ),
+        },
+    },
+];
+
+const initialEdges = [];
+
+export default function DiagramEditor() {
+    const { diagramId } = usePage().props;
+    const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+    const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+    const onConnect = useCallback(
+        (params) => setEdges((currentEdges) => addEdge({ ...params, animated: true }, currentEdges)),
+        [setEdges],
+    );
+
     return (
         <>
             <Head title={`Diagram ${diagramId}`} />
 
-            <section className="space-y-6">
-                <div className="rounded-2xl border border-indigo-100 bg-white p-6 shadow-sm">
-                    <h1 className="text-2xl font-semibold text-slate-900">Diagram Editor</h1>
-                    <p className="mt-2 text-sm text-slate-600">
+            <section className="flex h-screen flex-col gap-4">
+                <div className="rounded-xl border border-indigo-100 bg-white px-4 py-3 shadow-sm">
+                    <h1 className="text-lg font-semibold text-slate-900">Diagram Editor</h1>
+                    <p className="text-sm text-slate-600">
                         Diagram ID: <span className="font-semibold text-indigo-700">{diagramId}</span>
                     </p>
                 </div>
 
-                <div className="rounded-2xl border border-dashed border-indigo-200 bg-white p-10 text-center shadow-sm">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100 text-indigo-700">
-                        <span className="text-xl">⏳</span>
-                    </div>
-                    <h2 className="mt-4 text-lg font-semibold text-slate-900">React Flow canvas loading</h2>
-                    <p className="mt-2 text-sm text-slate-600">Loading… editor integration is coming next.</p>
+                <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <ReactFlow
+                        nodes={nodes}
+                        edges={edges}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChange}
+                        onConnect={onConnect}
+                        fitView
+                        className="h-full w-full"
+                    >
+                        <MiniMap />
+                        <Controls />
+                        <Background gap={16} size={1} />
+                    </ReactFlow>
                 </div>
             </section>
         </>

@@ -15,9 +15,9 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('Diagrams/Index');
     })->name('diagrams.index');
 
-    Route::get('/diagrams/{diagram}', function (string $diagram) {
+    Route::get('/diagrams/{diagram}', function (string $diagramId) {
         return Inertia::render('Diagrams/Editor', [
-            'diagramId' => $diagram,
+            'diagramId' => $diagramId,
         ]);
     })->name('diagrams.editor');
 });
