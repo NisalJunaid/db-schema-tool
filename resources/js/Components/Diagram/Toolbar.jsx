@@ -20,9 +20,9 @@ export default function Toolbar({ savingState, onSave, onImport, onExport, onExp
             </Link>
 
             <IconButton title="Save" onClick={onSave} icon="fa-solid fa-floppy-disk" className="border-indigo-300 text-indigo-700 hover:border-indigo-400" />
-            <IconButton title="Import" onClick={onImport} icon="fa-solid fa-file-import" />
-            <IconButton title="Export" onClick={onExport} icon="fa-solid fa-file-export" />
-            <IconButton title="Export image" onClick={onExportImage} icon="fa-solid fa-camera" />
+            <IconButton title="Import" onClick={onImport} icon="fa-solid fa-file-arrow-up" />
+            <IconButton title="Export" onClick={onExport} icon="fa-solid fa-file-arrow-down" />
+            <IconButton title="Export image" onClick={onExportImage} icon="fa-solid fa-image" />
             <IconButton title="New diagram" onClick={onNewDiagram} icon="fa-solid fa-file-circle-plus" />
             <IconButton title="Open diagram" onClick={onOpenDiagram} icon="fa-solid fa-folder-open" />
 
