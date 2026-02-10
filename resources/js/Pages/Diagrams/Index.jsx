@@ -1,6 +1,6 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
-import { apiRequest } from '@/lib/api';
+import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
 const emptyForm = {
     name: '',
@@ -45,11 +45,11 @@ export default function DiagramsIndex() {
             try {
                 setLoading(true);
                 setError('');
-                const data = await apiRequest('/api/v1/diagrams');
+                const data = await api.get('/api/v1/diagrams');
                 setDiagrams(flattenDiagrams(data));
             } catch (loadError) {
                 if (loadError?.status === 401) {
-                    setError('Your session has expired. Please sign in again to view diagrams.');
+                    setError(`${SESSION_EXPIRED_MESSAGE} to view diagrams.`);
                     return;
                 }
 
@@ -71,7 +71,7 @@ export default function DiagramsIndex() {
 
         const loadTeams = async () => {
             try {
-                const response = await apiRequest('/api/v1/teams');
+                const response = await api.get('/api/v1/teams');
                 const teamList = Array.isArray(response?.data)
                     ? response.data
                     : Array.isArray(response)
@@ -82,7 +82,7 @@ export default function DiagramsIndex() {
                 setSupportsTeamOwner(teamList.length > 0);
             } catch (teamError) {
                 if (teamError?.status === 401) {
-                    setError('Your session has expired. Please sign in again to load teams.');
+                    setError(`${SESSION_EXPIRED_MESSAGE} to load teams.`);
                 }
                 setTeams([]);
                 setSupportsTeamOwner(false);
@@ -150,10 +150,7 @@ export default function DiagramsIndex() {
         };
 
         try {
-            const response = await apiRequest('/api/v1/diagrams', {
-                method: 'POST',
-                data: payload,
-            });
+            const response = await api.post('/api/v1/diagrams', payload);
 
             const createdDiagram = response?.data ?? response;
             const createdId = createdDiagram?.id;
@@ -165,7 +162,7 @@ export default function DiagramsIndex() {
             }
         } catch (submitError) {
             if (submitError?.status === 401) {
-                setFormErrors({ general: ['Your session has expired. Please sign in again.'] });
+                setFormErrors({ general: [SESSION_EXPIRED_MESSAGE] });
                 return;
             }
 
@@ -201,7 +198,18 @@ export default function DiagramsIndex() {
                     </div>
                 </div>
 
-                {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+                {error && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        <span>{error}</span>
+                        <button
+                            type="button"
+                            onClick={() => router.get('/login')}
+                            className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                        >
+                            Sign in
+                        </button>
+                    </div>
+                )}
 
                 <div className="grid gap-6 lg:grid-cols-2">
                     <div className="rounded-2xl border border-indigo-100 bg-white p-6 shadow-sm">
