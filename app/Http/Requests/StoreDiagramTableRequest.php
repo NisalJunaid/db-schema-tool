@@ -24,6 +24,7 @@ class StoreDiagramTableRequest extends FormRequest
                 Rule::unique('diagram_tables')->where(fn ($query) => $query->where('diagram_id', $this->integer('diagram_id'))),
             ],
             'schema' => ['nullable', 'string', 'max:255'],
+            'color' => ['nullable', 'string', 'max:50'],
             'x' => ['required', 'integer'],
             'y' => ['required', 'integer'],
             'w' => ['required', 'integer'],

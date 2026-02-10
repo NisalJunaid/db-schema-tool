@@ -34,7 +34,7 @@ Route::middleware('auth')->group(function () {
         Route::apiResource('diagram-columns', DiagramColumnController::class)
             ->only(['store', 'update', 'destroy']);
         Route::apiResource('diagram-relationships', DiagramRelationshipController::class)
-            ->only(['store', 'destroy']);
+            ->only(['store', 'update', 'destroy']);
     });
 });
 

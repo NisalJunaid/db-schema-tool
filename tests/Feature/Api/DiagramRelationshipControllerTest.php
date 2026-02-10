@@ -82,6 +82,71 @@ class DiagramRelationshipControllerTest extends TestCase
         $this->assertDatabaseCount('diagram_relationships', 0);
     }
 
+
+    public function test_store_rejects_duplicate_relationships(): void
+    {
+        $user = User::factory()->create();
+        $diagram = Diagram::create([
+            'owner_type' => User::class,
+            'owner_id' => $user->getKey(),
+            'name' => 'Sales Diagram',
+        ]);
+
+        $fromColumn = $this->createColumnForDiagram($diagram, 'users', 'id');
+        $toColumn = $this->createColumnForDiagram($diagram, 'orders', 'user_id');
+
+        DiagramRelationship::create([
+            'diagram_id' => $diagram->getKey(),
+            'from_column_id' => $fromColumn->getKey(),
+            'to_column_id' => $toColumn->getKey(),
+            'type' => 'one_to_many',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $response = $this->postJson('/api/v1/diagram-relationships', [
+            'diagram_id' => $diagram->getKey(),
+            'from_column_id' => $fromColumn->getKey(),
+            'to_column_id' => $toColumn->getKey(),
+            'type' => 'one_to_many',
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['to_column_id']);
+    }
+
+    public function test_update_can_change_relationship_type(): void
+    {
+        $user = User::factory()->create();
+        $diagram = Diagram::create([
+            'owner_type' => User::class,
+            'owner_id' => $user->getKey(),
+            'name' => 'Sales Diagram',
+        ]);
+
+        $fromColumn = $this->createColumnForDiagram($diagram, 'users', 'id');
+        $toColumn = $this->createColumnForDiagram($diagram, 'orders', 'user_id');
+
+        $relationship = DiagramRelationship::create([
+            'diagram_id' => $diagram->getKey(),
+            'from_column_id' => $fromColumn->getKey(),
+            'to_column_id' => $toColumn->getKey(),
+            'type' => 'one_to_many',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $response = $this->patchJson('/api/v1/diagram-relationships/'.$relationship->getKey(), [
+            'type' => 'many_to_many',
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('diagram_relationships', [
+            'id' => $relationship->getKey(),
+            'type' => 'many_to_many',
+        ]);
+    }
+
     public function test_destroy_requires_update_authorization_via_diagram_policy(): void
     {
         $owner = User::factory()->create();

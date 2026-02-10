@@ -66,6 +66,32 @@ export const COLUMN_PRESETS = [
     },
 ];
 
+export const RELATIONSHIP_TYPE_OPTIONS = [
+    { value: 'one_to_one', label: '1:1' },
+    { value: 'one_to_many', label: '1:N' },
+    { value: 'many_to_many', label: 'N:N' },
+];
+
+export const TABLE_COLOR_OPTIONS = [
+    { value: 'slate', label: 'Slate', solid: '#64748b', tint: '#f1f5f9' },
+    { value: 'gray', label: 'Gray', solid: '#6b7280', tint: '#f3f4f6' },
+    { value: 'blue', label: 'Blue', solid: '#3b82f6', tint: '#dbeafe' },
+    { value: 'indigo', label: 'Indigo', solid: '#6366f1', tint: '#e0e7ff' },
+    { value: 'violet', label: 'Violet', solid: '#8b5cf6', tint: '#ede9fe' },
+    { value: 'emerald', label: 'Emerald', solid: '#10b981', tint: '#d1fae5' },
+    { value: 'teal', label: 'Teal', solid: '#14b8a6', tint: '#ccfbf1' },
+    { value: 'amber', label: 'Amber', solid: '#f59e0b', tint: '#fef3c7' },
+    { value: 'rose', label: 'Rose', solid: '#f43f5e', tint: '#ffe4e6' },
+];
+
+export function getTableColorMeta(value) {
+    return TABLE_COLOR_OPTIONS.find((entry) => entry.value === value) ?? TABLE_COLOR_OPTIONS[0];
+}
+
+export function relationshipLabel(type) {
+    return RELATIONSHIP_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? '1:N';
+}
+
 export function asCollection(value, fallbackKey) {
     if (Array.isArray(value)) {
         return value;

@@ -20,6 +20,7 @@ class DiagramTable extends Model
         'diagram_id',
         'name',
         'schema',
+        'color',
         'x',
         'y',
         'w',
