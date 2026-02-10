@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use ZipArchive;
 
 class DiagramTransferController extends Controller
 {
@@ -131,39 +132,138 @@ class DiagramTransferController extends Controller
         return response()->streamDownload(fn () => print $sql, 'schema.sql', ['Content-Type' => 'text/sql']);
     }
 
-    public function exportMigrations(Diagram $diagram): StreamedResponse
+    public function exportMigrations(Diagram $diagram)
     {
         $this->authorize('view', $diagram);
         $diagram->load('diagramTables.diagramColumns');
 
-        $content = "<?php\n\nuse Illuminate\\Database\\Migrations\\Migration;\nuse Illuminate\\Database\\Schema\\Blueprint;\nuse Illuminate\\Support\\Facades\\Schema;\n\n";
+        $zipPath = tempnam(sys_get_temp_dir(), 'diagram_migrations_');
+        $zip = new ZipArchive;
+        $opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
 
-        foreach ($diagram->diagramTables as $table) {
-            $class = 'Create'.Str::studly($table->name).'Table';
-            $content .= "return new class extends Migration {\n    public function up(): void\n    {\n        Schema::create('{$table->name}', function (Blueprint \\$table) {\n";
-            foreach ($table->diagramColumns as $column) {
-                $type = Str::lower($column->type);
-                $method = str_contains($type, 'int') ? 'integer' : (str_contains($type, 'text') ? 'text' : 'string');
-                $line = "            \\$table->{$method}('{$column->name}')";
-                if ($column->nullable) {
-                    $line .= '->nullable()';
-                }
-                if ($column->unique) {
-                    $line .= '->unique()';
-                }
-                $line .= ';';
-                $content .= $line."\n";
-            }
-
-            $primaryColumns = collect($table->diagramColumns)->filter(fn (DiagramColumn $column) => $column->primary)->pluck('name')->values();
-            if ($primaryColumns->isNotEmpty()) {
-                $content .= "            \\$table->primary(['".$primaryColumns->implode("','")."']);\n";
-            }
-
-            $content .= "        });\n    }\n\n    public function down(): void\n    {\n        Schema::dropIfExists('{$table->name}');\n    }\n};\n\n";
-            $content .= "// {$class}\n\n";
+        if ($opened !== true) {
+            abort(500, 'Unable to generate migration archive.');
         }
 
-        return response()->streamDownload(fn () => print $content, 'migrations.php', ['Content-Type' => 'text/x-php']);
+        $baseTimestamp = now();
+
+        foreach ($diagram->diagramTables->values() as $index => $table) {
+            $timestamp = $baseTimestamp->copy()->addSeconds($index)->format('Y_m_d_His');
+            $fileName = sprintf('migrations/%s_create_%s_table.php', $timestamp, Str::snake($table->name));
+
+            $zip->addFromString($fileName, $this->buildMigrationContent($table));
+        }
+
+        $zip->close();
+
+        return response()->download($zipPath, 'migrations.zip', ['Content-Type' => 'application/zip'])->deleteFileAfterSend(true);
+    }
+
+    private function buildMigrationContent(DiagramTable $table): string
+    {
+        $lines = [
+            "<?php",
+            '',
+            'use Illuminate\\Database\\Migrations\\Migration;',
+            'use Illuminate\\Database\\Schema\\Blueprint;',
+            'use Illuminate\\Support\\Facades\\Schema;',
+            '',
+            'return new class extends Migration',
+            '{',
+            '    public function up(): void',
+            '    {',
+            "        Schema::create('{$table->name}', function (Blueprint \\$table) {",
+        ];
+
+        $hasTimestamps = collect($table->diagramColumns)->contains(fn (DiagramColumn $column) => in_array(Str::lower($column->name), ['created_at', 'updated_at'], true));
+
+        foreach ($table->diagramColumns as $column) {
+            $columnName = Str::lower($column->name);
+            if ($hasTimestamps && in_array($columnName, ['created_at', 'updated_at'], true)) {
+                continue;
+            }
+
+            $methodCall = $this->toBlueprintMethod($column);
+            $line = "            \\$table->{$methodCall}";
+
+            if ($column->nullable) {
+                $line .= '->nullable()';
+            }
+
+            if ($column->unique) {
+                $line .= '->unique()';
+            }
+
+            if ($column->default !== null) {
+                $line .= "->default('".addslashes($column->default)."')";
+            }
+
+            $line .= ';';
+            $lines[] = $line;
+        }
+
+        if ($hasTimestamps) {
+            $lines[] = '            $table->timestamps();';
+        }
+
+        $primaryColumns = collect($table->diagramColumns)
+            ->filter(fn (DiagramColumn $column) => $column->primary)
+            ->pluck('name')
+            ->values();
+
+        if ($primaryColumns->isNotEmpty()) {
+            $lines[] = "            \\$table->primary(['".$primaryColumns->implode("', '")."']);";
+        }
+
+        $lines[] = '        });';
+        $lines[] = '    }';
+        $lines[] = '';
+        $lines[] = '    public function down(): void';
+        $lines[] = '    {';
+        $lines[] = "        Schema::dropIfExists('{$table->name}');";
+        $lines[] = '    }';
+        $lines[] = '};';
+        $lines[] = '';
+
+        return implode("\n", $lines);
+    }
+
+    private function toBlueprintMethod(DiagramColumn $column): string
+    {
+        $type = Str::lower($column->type);
+
+        if (preg_match('/^varchar\((\d+)\)$/', $type, $matches)) {
+            return "string('{$column->name}', {$matches[1]})";
+        }
+
+        if (str_starts_with($type, 'bigint')) {
+            return "bigInteger('{$column->name}')";
+        }
+
+        if (str_starts_with($type, 'int')) {
+            return "integer('{$column->name}')";
+        }
+
+        if (str_starts_with($type, 'boolean') || $type === 'bool') {
+            return "boolean('{$column->name}')";
+        }
+
+        if (str_starts_with($type, 'text')) {
+            return "text('{$column->name}')";
+        }
+
+        if (preg_match('/^decimal\((\d+)\s*,\s*(\d+)\)$/', $type, $matches)) {
+            return "decimal('{$column->name}', {$matches[1]}, {$matches[2]})";
+        }
+
+        if ($type === 'date') {
+            return "date('{$column->name}')";
+        }
+
+        if (str_starts_with($type, 'timestamp')) {
+            return "timestamp('{$column->name}')";
+        }
+
+        return "string('{$column->name}')";
     }
 }

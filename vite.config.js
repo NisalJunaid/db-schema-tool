@@ -13,6 +13,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': '/resources/js',
+            'html-to-image': '/resources/js/vendor/html-to-image.js',
         },
     },
 });
