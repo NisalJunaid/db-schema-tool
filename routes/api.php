@@ -7,7 +7,7 @@ use App\Http\Controllers\Api\DiagramTableController;
 use App\Http\Controllers\Api\TeamController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1')->middleware('auth')->group(function () {
     Route::apiResource('diagrams', DiagramController::class);
     Route::get('teams', [TeamController::class, 'index']);
     Route::apiResource('diagram-tables', DiagramTableController::class)
