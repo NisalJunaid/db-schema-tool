@@ -1,6 +1,7 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Background, Controls, MiniMap, ReactFlow, applyNodeChanges } from 'reactflow';
+import { toPng } from 'html-to-image';
+import { Background, ControlButton, Controls, MiniMap, ReactFlow, applyNodeChanges } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
 import Sidebar from '@/Components/Diagram/Sidebar';
@@ -8,6 +9,7 @@ import Toolbar from '@/Components/Diagram/Toolbar';
 import AddColumnModal from '@/Components/Diagram/modals/AddColumnModal';
 import AddTableModal from '@/Components/Diagram/modals/AddTableModal';
 import ImportModal from '@/Components/Diagram/modals/ImportModal';
+import ExportModal from '@/Components/Diagram/modals/ExportModal';
 import NewDiagramModal from '@/Components/Diagram/modals/NewDiagramModal';
 import OpenDiagramModal from '@/Components/Diagram/modals/OpenDiagramModal';
 import RelationshipModal from '@/Components/Diagram/modals/RelationshipModal';
@@ -48,6 +50,7 @@ export default function DiagramEditor() {
     const [formErrors, setFormErrors] = useState({});
 
     const [showImportModal, setShowImportModal] = useState(false);
+    const [showExportModal, setShowExportModal] = useState(false);
     const [showOpenModal, setShowOpenModal] = useState(false);
     const [showNewModal, setShowNewModal] = useState(false);
     const [allDiagrams, setAllDiagrams] = useState([]);
@@ -283,25 +286,15 @@ export default function DiagramEditor() {
     const exportImage = async () => {
         const target = document.querySelector('.react-flow__viewport');
         if (!target) return;
-        const { width, height } = target.getBoundingClientRect();
-        const serialized = new XMLSerializer().serializeToString(target.cloneNode(true));
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><foreignObject width="100%" height="100%">${serialized}</foreignObject></svg>`;
-        const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const image = new Image();
-        image.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            canvas.getContext('2d')?.drawImage(image, 0, 0);
-            const png = canvas.toDataURL('image/png');
-            const link = document.createElement('a');
-            link.download = 'diagram.png';
-            link.href = png;
-            link.click();
-            URL.revokeObjectURL(url);
-        };
-        image.src = url;
+        const pngDataUrl = await toPng(target, {
+            pixelRatio: 2,
+            backgroundColor: '#f8fafc',
+        });
+
+        const link = document.createElement('a');
+        link.download = 'diagram.png';
+        link.href = pngDataUrl;
+        link.click();
     };
 
     const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
@@ -333,12 +326,10 @@ export default function DiagramEditor() {
                         savingState={savingState}
                         onSave={manualSave}
                         onImport={() => setShowImportModal(true)}
-                        onExportSql={() => exportDownload(`/api/v1/diagrams/${diagramId}/export-sql`, 'schema.sql', 'text/sql')}
-                        onExportMigrations={() => exportDownload(`/api/v1/diagrams/${diagramId}/export-migrations`, 'migrations.php', 'text/x-php')}
+                        onExport={() => setShowExportModal(true)}
                         onExportImage={exportImage}
                         onNewDiagram={() => setShowNewModal(true)}
                         onOpenDiagram={() => setShowOpenModal(true)}
-                        onFitView={() => reactFlowRef.current?.fitView({ padding: 0.2, duration: 350 })}
                     />
 
                     {!editMode && <div className="mx-4 mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">View mode</div>}
@@ -371,7 +362,12 @@ export default function DiagramEditor() {
                         >
                             <Background gap={20} size={1} color="#cbd5e1" />
                             <MiniMap pannable zoomable />
-                            <Controls showInteractive={false} />
+                            <Controls showInteractive={false} position="bottom-left">
+                                <ControlButton onClick={() => setEditMode((current) => !current)} title="Edit mode" className={editMode ? '!bg-indigo-600 !text-white hover:!bg-indigo-700' : ''}>
+                                    <i className="fa-solid fa-pen-to-square" aria-hidden="true" />
+                                    <span className="sr-only">Edit mode</span>
+                                </ControlButton>
+                            </Controls>
                         </ReactFlow>
                     </div>
                 </div>
@@ -381,6 +377,28 @@ export default function DiagramEditor() {
             <AddColumnModal isOpen={showAddColumnModal} mode={columnModalMode} form={addColumnForm} column={editingColumn} errors={formErrors} onClose={() => { setShowAddColumnModal(false); setEditingColumn(null); setAddColumnForm(defaultColumnForm); }} onSubmit={submitAddColumn} />
             <RelationshipModal isOpen={relationshipModalState.open} mode={relationshipModalState.mode} relationshipType={relationshipModalState.type} onTypeChange={(type) => setRelationshipModalState((state) => ({ ...state, type }))} onClose={() => { setRelationshipModalState((state) => ({ ...state, open: false })); setRelationshipDraft(null); }} onSubmit={submitRelationship} />
             <ImportModal open={showImportModal} onClose={() => setShowImportModal(false)} onImport={handleImport} />
+            <ExportModal
+                open={showExportModal}
+                onClose={() => setShowExportModal(false)}
+                onExportSql={async () => {
+                    await exportDownload(`/api/v1/diagrams/${diagramId}/export-sql`, 'schema.sql', 'text/sql');
+                    setShowExportModal(false);
+                }}
+                onExportMigrations={async () => {
+                    await exportDownload(`/api/v1/diagrams/${diagramId}/export-migrations`, 'migrations.zip', 'application/zip');
+                    setShowExportModal(false);
+                }}
+                onExportJson={async () => {
+                    const latestDiagram = await api.get(`/api/v1/diagrams/${diagramId}`);
+                    const payload = JSON.stringify(latestDiagram?.data ?? latestDiagram, null, 2);
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
+                    link.download = `diagram-${diagramId}.json`;
+                    link.click();
+                    URL.revokeObjectURL(link.href);
+                    setShowExportModal(false);
+                }}
+            />
             <OpenDiagramModal open={showOpenModal} diagrams={allDiagrams} onClose={() => setShowOpenModal(false)} onOpen={(selected) => router.visit(`/diagrams/${selected.id}`)} />
             <NewDiagramModal open={showNewModal} teams={teams} onClose={() => setShowNewModal(false)} onCreate={async (payload) => { const created = await api.post('/api/v1/diagrams', payload); router.visit(`/diagrams/${created?.id}`); }} />
         </>
