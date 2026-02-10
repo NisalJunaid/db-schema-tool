@@ -1,6 +1,6 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position } from 'reactflow';
-import ColorPicker from '@/Components/Diagram/ColorPicker';
+import ColorPickerPopover from '@/Components/Diagram/ColorPickerPopover';
 import { getTableColorMeta, toColumnHandleId } from '@/Components/Diagram/utils';
 
 function TableNode({ data }) {
@@ -9,6 +9,7 @@ function TableNode({ data }) {
     const editMode = Boolean(data?.editMode);
     const isActive = Boolean(data?.isActiveEditTable);
     const selectedColumnId = data?.selectedColumnId ?? null;
+    const colorButtonRef = useRef(null);
 
     const [isEditingName, setIsEditingName] = useState(false);
     const [showColors, setShowColors] = useState(false);
@@ -44,6 +45,8 @@ function TableNode({ data }) {
         setIsEditingName(false);
     };
 
+    const anchorRect = colorButtonRef.current?.getBoundingClientRect() ?? null;
+
     return (
         <div className="min-w-[320px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
             <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2" style={{ backgroundColor: colorMeta.tint }}>
@@ -72,8 +75,9 @@ function TableNode({ data }) {
                 </div>
 
                 {editMode && (
-                    <div className="relative flex items-center gap-1">
+                    <div className="flex items-center gap-1">
                         <button
+                            ref={colorButtonRef}
                             type="button"
                             onClick={(event) => {
                                 event.stopPropagation();
@@ -108,11 +112,16 @@ function TableNode({ data }) {
                             </svg>
                         </button>
 
-                        {showColors && (
-                            <div className="absolute right-0 top-8 z-20 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-xl" onClick={(event) => event.stopPropagation()}>
-                                <ColorPicker value={table.color ?? null} onChange={(color) => data?.onUpdateTableColor?.(table.id, color)} />
-                            </div>
-                        )}
+                        <ColorPickerPopover
+                            open={showColors}
+                            anchorRect={anchorRect}
+                            value={table.color ?? null}
+                            onSelect={(color) => {
+                                data?.onUpdateTableColor?.(table.id, color);
+                                setShowColors(false);
+                            }}
+                            onClose={() => setShowColors(false)}
+                        />
                     </div>
                 )}
             </div>

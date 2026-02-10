@@ -3,6 +3,7 @@
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Api\DiagramColumnController;
 use App\Http\Controllers\Api\DiagramController;
+use App\Http\Controllers\Api\DiagramTransferController;
 use App\Http\Controllers\Api\DiagramRelationshipController;
 use App\Http\Controllers\Api\DiagramTableController;
 use App\Http\Controllers\Api\TeamController;
@@ -28,6 +29,9 @@ Route::middleware('auth')->group(function () {
 
     Route::prefix('api/v1')->group(function () {
         Route::apiResource('diagrams', DiagramController::class);
+        Route::post('diagrams/{diagram}/import', [DiagramTransferController::class, 'import']);
+        Route::get('diagrams/{diagram}/export-sql', [DiagramTransferController::class, 'exportSql']);
+        Route::get('diagrams/{diagram}/export-migrations', [DiagramTransferController::class, 'exportMigrations']);
         Route::get('teams', [TeamController::class, 'index']);
         Route::apiResource('diagram-tables', DiagramTableController::class)
             ->only(['store', 'update', 'destroy']);
