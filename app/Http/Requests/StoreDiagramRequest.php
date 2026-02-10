@@ -18,7 +18,7 @@ class StoreDiagramRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'owner_type' => ['required', 'string', Rule::in([User::class, Team::class])],
+            'owner_type' => ['required', 'string', Rule::in(['user', 'team'])],
             'owner_id' => ['required', 'integer', 'min:1'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
@@ -35,11 +35,11 @@ class StoreDiagramRequest extends FormRequest
             $ownerType = $this->input('owner_type');
             $ownerId = (int) $this->input('owner_id');
 
-            if ($ownerType === User::class && ! User::query()->whereKey($ownerId)->exists()) {
+            if ($ownerType === 'user' && ! User::query()->whereKey($ownerId)->exists()) {
                 $validator->errors()->add('owner_id', 'The selected owner id is invalid for user owner type.');
             }
 
-            if ($ownerType === Team::class && ! Team::query()->whereKey($ownerId)->exists()) {
+            if ($ownerType === 'team' && ! Team::query()->whereKey($ownerId)->exists()) {
                 $validator->errors()->add('owner_id', 'The selected owner id is invalid for team owner type.');
             }
         });

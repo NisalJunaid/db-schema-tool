@@ -4,7 +4,7 @@ import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
 const emptyForm = {
     name: '',
-    ownerType: 'personal',
+    ownerType: 'user',
     teamId: '',
 };
 
@@ -142,11 +142,12 @@ export default function DiagramsIndex() {
         setCreating(true);
         setFormErrors({});
 
-        const isTeam = createForm.ownerType === 'team';
+        const ownerType = createForm.ownerType === 'team' ? 'team' : 'user';
+        const isTeam = ownerType === 'team';
         const payload = {
             name: createForm.name,
-            owner_type: isTeam ? 'team' : 'user',
-            owner_id: isTeam ? Number(createForm.teamId) : authUser?.id,
+            owner_type: ownerType,
+            owner_id: isTeam ? Number(createForm.teamId) : Number(authUser?.id),
         };
 
         try {
@@ -291,7 +292,7 @@ export default function DiagramsIndex() {
                                     }
                                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
                                 >
-                                    <option value="personal">Personal</option>
+                                    <option value="user">Personal</option>
                                     {supportsTeamOwner && <option value="team">Team</option>}
                                 </select>
                             </div>

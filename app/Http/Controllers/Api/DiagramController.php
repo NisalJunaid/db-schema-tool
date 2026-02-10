@@ -3,13 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreDiagramRequest;
 use App\Http\Requests\UpdateDiagramRequest;
 use App\Models\Diagram;
 use App\Models\Team;
-use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class DiagramController extends Controller
 {
@@ -24,11 +23,11 @@ class DiagramController extends Controller
             ->where(function ($query) use ($user, $teamIds) {
                 $query->where(function ($personalQuery) use ($user) {
                     $personalQuery
-                        ->where('owner_type', User::class)
+                        ->where('owner_type', 'user')
                         ->where('owner_id', $user->getKey());
                 })->orWhere(function ($teamQuery) use ($teamIds) {
                     $teamQuery
-                        ->where('owner_type', Team::class)
+                        ->where('owner_type', 'team')
                         ->whereIn('owner_id', $teamIds);
                 });
             })
@@ -38,9 +37,29 @@ class DiagramController extends Controller
         return response()->json($diagrams);
     }
 
-    public function store(StoreDiagramRequest $request): JsonResponse
+    public function store(Request $request): JsonResponse
     {
-        $validated = $request->validated();
+        $validated = $request->validate([
+            'owner_type' => ['required', 'string', Rule::in(['user', 'team'])],
+            'owner_id' => ['required', 'integer', 'min:1'],
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'viewport' => ['nullable', 'array'],
+            'viewport.x' => ['nullable', 'numeric'],
+            'viewport.y' => ['nullable', 'numeric'],
+            'viewport.zoom' => ['nullable', 'numeric'],
+        ]);
+
+        if ($validated['owner_type'] === 'user') {
+            $validated['owner_id'] = (int) $request->user()->getKey();
+        } elseif (! Team::query()->whereKey((int) $validated['owner_id'])->exists()) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => [
+                    'owner_id' => ['The selected owner id is invalid for team owner type.'],
+                ],
+            ], 422);
+        }
 
         $this->authorize('create', [
             Diagram::class,
