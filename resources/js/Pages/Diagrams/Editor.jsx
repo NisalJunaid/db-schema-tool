@@ -610,7 +610,7 @@ function DiagramEditorContent() {
                         showMiniMap={showMiniMap}
                         showGrid={showGrid}
                         onToggleMiniMap={() => setShowMiniMap((current) => !current)}
-                        onToggleGrid={() => setShowGrid((current) => !current)}
+                        onToggleGrid={() => setShowGrid((prev) => !prev)}
                     />
 
                     {!editMode && <div className="mx-4 mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">View mode</div>}
