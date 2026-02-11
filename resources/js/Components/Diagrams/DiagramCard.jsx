@@ -1,9 +1,8 @@
 import DiagramActionsMenu from './DiagramActionsMenu';
 
 export default function DiagramCard({ diagram, onOpen, onRename, onToggleVisibility, onInvite, onManageAccess, onDelete }) {
-    const previewUrl = diagram.preview_url
-        ? new URL(diagram.preview_url, window.location.origin).toString()
-        : null;
+    const previewSource = diagram.preview_url || diagram.preview_path || diagram.preview_image || null;
+    const previewUrl = previewSource ? new URL(previewSource, window.location.origin).toString() : null;
     const previewVersion = diagram.preview_path || diagram.updated_at || 'initial';
 
     return (
