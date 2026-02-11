@@ -16,6 +16,7 @@ export default function Sidebar({
     onUpdateTableColor,
     editMode,
     onToggleEditMode,
+    canEdit = true,
 }) {
     const [search, setSearch] = useState('');
     const [expandedTables, setExpandedTables] = useState({});
@@ -92,15 +93,17 @@ export default function Sidebar({
                     >
                         Add table
                     </button>
-                    <button
-                        type="button"
-                        onClick={onToggleEditMode}
-                        className={`rounded-full border px-3 py-2 text-xs font-semibold ${
-                            editMode ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-slate-50 text-slate-700'
-                        }`}
-                    >
-                        Edit mode: {editMode ? 'ON' : 'OFF'}
-                    </button>
+                    {canEdit && (
+                        <button
+                            type="button"
+                            onClick={onToggleEditMode}
+                            className={`rounded-full border px-3 py-2 text-xs font-semibold ${
+                                editMode ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-slate-50 text-slate-700'
+                            }`}
+                        >
+                            Edit mode: {editMode ? 'ON' : 'OFF'}
+                        </button>
+                    )}
                 </div>
             </div>
 

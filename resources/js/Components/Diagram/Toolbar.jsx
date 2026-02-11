@@ -29,6 +29,9 @@ export default function Toolbar({
     showGrid,
     onToggleMiniMap,
     onToggleGrid,
+    canManageAccess,
+    onManageAccess,
+    isViewOnly,
 }) {
     return (
         <div className="sticky top-0 z-30 flex items-center border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
@@ -47,6 +50,7 @@ export default function Toolbar({
 
                 <div className="flex items-center gap-x-2">
                     <IconButton title="Save" onClick={onSave} icon="fa-solid fa-floppy-disk" className="border-indigo-300 text-indigo-700 hover:border-indigo-400" />
+                    {canManageAccess && <IconButton title="Manage access" onClick={onManageAccess} icon="fa-solid fa-user-shield" />}
                 </div>
 
                 <div className="flex items-center gap-x-2">
@@ -66,6 +70,7 @@ export default function Toolbar({
             </div>
 
             <div className="ml-auto flex items-center gap-2">
+                {isViewOnly && <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">View only</span>}
                 <IconButton
                     title="Toggle minimap"
                     onClick={onToggleMiniMap}

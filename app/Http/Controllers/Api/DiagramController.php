@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class DiagramController extends Controller
 {
@@ -49,7 +50,7 @@ class DiagramController extends Controller
         $diagrams = $query
             ->latest()
             ->get()
-            ->map(function (Diagram $diagram) {
+            ->map(function (Diagram $diagram) use ($request) {
                 $ownerName = $diagram->owner?->name;
 
                 return [
@@ -62,6 +63,7 @@ class DiagramController extends Controller
                     'preview_image' => $diagram->preview_image,
                     'preview_path' => $diagram->preview_path ? Storage::url($diagram->preview_path) : null,
                     'updated_at' => $diagram->updated_at,
+                    'permissions' => $this->diagramPermissions($request, $diagram),
                 ];
             })
             ->values();
@@ -100,18 +102,21 @@ class DiagramController extends Controller
         return response()->json($diagram, 201);
     }
 
-    public function show(Diagram $diagram): JsonResponse
+    public function show(Request $request, Diagram $diagram): JsonResponse
     {
         $this->authorize('view', $diagram);
 
         $diagram->load(['diagramTables.diagramColumns', 'diagramRelationships']);
 
-        return response()->json($diagram);
+        return response()->json([
+            ...$diagram->toArray(),
+            'permissions' => $this->diagramPermissions($request, $diagram),
+        ]);
     }
 
     public function update(UpdateDiagramRequest $request, Diagram $diagram): JsonResponse
     {
-        $this->authorize('update', $diagram);
+        $this->authorize('edit', $diagram);
 
         $diagram->update($request->validated());
 
@@ -138,13 +143,80 @@ class DiagramController extends Controller
         ]);
 
         $scope = $validated['invite_scope'] ?? 'diagram';
+        $inviteType = $scope === 'team' && $diagram->owner_type === 'team' ? 'team' : 'diagram';
+        $email = Invitation::normalizeEmail($validated['email']);
+
+        $existingUser = User::query()->whereRaw('LOWER(TRIM(email)) = ?', [$email])->first();
+
+        if ($inviteType === 'team') {
+            if (! $diagram->owner instanceof Team) {
+                throw ValidationException::withMessages([
+                    'email' => ['Team invitation is not available for this diagram.'],
+                ]);
+            }
+
+            $alreadyInTeam = $diagram->owner->users()
+                ->whereRaw('LOWER(TRIM(users.email)) = ?', [$email])
+                ->exists();
+
+            if ($alreadyInTeam) {
+                throw ValidationException::withMessages([
+                    'email' => ['User already in team.'],
+                ]);
+            }
+
+            $pendingInviteExists = Invitation::query()
+                ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
+                ->where('type', 'team')
+                ->where('team_id', $diagram->owner_id)
+                ->where('status', 'pending')
+                ->exists();
+
+            if ($pendingInviteExists) {
+                throw ValidationException::withMessages([
+                    'email' => ['Invitation already sent.'],
+                ]);
+            }
+        } else {
+            if ($existingUser) {
+                $isOwner = $diagram->owner_type === 'user'
+                    && (int) $diagram->owner_id === (int) $existingUser->getKey();
+
+                $isTeamMember = $diagram->owner_type === 'team'
+                    && $existingUser->teams()->whereKey($diagram->owner_id)->exists();
+
+                $hasAccess = $diagram->accessEntries()
+                    ->where('subject_type', 'user')
+                    ->where('subject_id', $existingUser->getKey())
+                    ->exists();
+
+                if ($isOwner || $isTeamMember || $hasAccess) {
+                    throw ValidationException::withMessages([
+                        'email' => ['User already in team.'],
+                    ]);
+                }
+            }
+
+            $pendingInviteExists = Invitation::query()
+                ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
+                ->where('type', 'diagram')
+                ->where('diagram_id', $diagram->id)
+                ->where('status', 'pending')
+                ->exists();
+
+            if ($pendingInviteExists) {
+                throw ValidationException::withMessages([
+                    'email' => ['Invitation already sent.'],
+                ]);
+            }
+        }
 
         $invitation = Invitation::create([
-            'email' => Invitation::normalizeEmail($validated['email']),
+            'email' => $email,
             'inviter_user_id' => $request->user()->id,
-            'type' => $scope === 'team' && $diagram->owner_type === 'team' ? 'team' : 'diagram',
+            'type' => $inviteType,
             'team_id' => $diagram->owner_type === 'team' ? $diagram->owner_id : null,
-            'diagram_id' => $scope === 'diagram' || $diagram->owner_type !== 'team' ? $diagram->id : null,
+            'diagram_id' => $inviteType === 'diagram' ? $diagram->id : null,
             'role' => $validated['role'],
             'email_status' => 'pending',
         ]);
@@ -152,12 +224,21 @@ class DiagramController extends Controller
         $invitation->load(['inviter:id,name,email', 'team:id,name', 'diagram:id,name']);
         InvitationController::sendInvitationMail($invitation);
 
-        $existingUser = User::query()->whereRaw('LOWER(TRIM(email)) = ?', [Invitation::normalizeEmail($validated['email'])])->exists();
-
         return response()->json([
             'message' => 'Invite created successfully.',
-            'registered_user' => $existingUser,
+            'registered_user' => (bool) $existingUser,
             'invitation' => $invitation,
         ], 201);
+    }
+
+    private function diagramPermissions(Request $request, Diagram $diagram): array
+    {
+        $user = $request->user();
+
+        return [
+            'canEdit' => $user->can('edit', $diagram),
+            'canManageAccess' => $user->can('manageAccess', $diagram),
+            'canDelete' => $user->can('delete', $diagram),
+        ];
     }
 }

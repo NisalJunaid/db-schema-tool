@@ -26,8 +26,18 @@ class TeamPolicy
         return $user->teams()->whereKey($team->getKey())->exists();
     }
 
-    public function manage(User $user, Team $team): bool
+    public function manageMembers(User $user, Team $team): bool
     {
         return $user->hasTeamRole($team, ['admin', 'owner']);
+    }
+
+    public function manageTeam(User $user, Team $team): bool
+    {
+        return $this->manageMembers($user, $team);
+    }
+
+    public function manage(User $user, Team $team): bool
+    {
+        return $this->manageTeam($user, $team);
     }
 }

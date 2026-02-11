@@ -26,7 +26,7 @@ class DiagramRelationshipController extends Controller
 
         $diagram = Diagram::query()->findOrFail($validated['diagram_id']);
 
-        $this->authorize('update', $diagram);
+        $this->authorize('edit', $diagram);
 
         $fromColumn = DiagramColumn::query()
             ->with('diagramTable:id,diagram_id')
@@ -65,7 +65,7 @@ class DiagramRelationshipController extends Controller
 
     public function update(Request $request, DiagramRelationship $diagramRelationship): JsonResponse
     {
-        $this->authorize('update', $diagramRelationship->diagram);
+        $this->authorize('edit', $diagramRelationship->diagram);
 
         $validated = $request->validate([
             'type' => ['required', Rule::in(['one_to_one', 'one_to_many', 'many_to_many'])],
@@ -78,7 +78,7 @@ class DiagramRelationshipController extends Controller
 
     public function destroy(DiagramRelationship $diagramRelationship): JsonResponse
     {
-        $this->authorize('update', $diagramRelationship->diagram);
+        $this->authorize('edit', $diagramRelationship->diagram);
 
         $diagramRelationship->delete();
 
