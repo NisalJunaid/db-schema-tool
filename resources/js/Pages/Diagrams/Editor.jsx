@@ -476,7 +476,8 @@ function DiagramEditorContent() {
             if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
             const viewport = reactFlowRef.current?.getViewport?.() ?? diagram?.viewport ?? { x: 0, y: 0, zoom: 1 };
             await Promise.all(nodes.map((node) => api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) })));
-            await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport });
+            const previewImage = await generatePreviewDataUrl();
+            await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport, preview_image: previewImage });
             setSavingState('Saved');
         } catch (saveError) {
             setSavingState('Error');
@@ -542,6 +543,18 @@ function DiagramEditorContent() {
     }, [nodes]);
 
     const handleImport = async (payload) => { setSavingState('Saving...'); await api.post(`/api/v1/diagrams/${diagramId}/import`, payload); await loadDiagram(); setSavingState('Saved'); };
+
+
+    const generatePreviewDataUrl = async () => {
+        const target = document.querySelector('.react-flow__viewport');
+        if (!target) return null;
+
+        return toPng(target, {
+            pixelRatio: 1,
+            backgroundColor: '#f8fafc',
+            cacheBust: true,
+        });
+    };
 
     const exportDownload = async (url, filename, mime = 'text/plain') => {
         const response = await fetch(url, { credentials: 'same-origin' });

@@ -20,6 +20,7 @@ class UpdateDiagramRequest extends FormRequest
             'viewport.x' => ['nullable', 'numeric'],
             'viewport.y' => ['nullable', 'numeric'],
             'viewport.zoom' => ['nullable', 'numeric'],
+            'preview_image' => ['nullable', 'string'],
         ];
     }
 }

@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import CarouselRow from '@/Components/Diagrams/CarouselRow';
 import DiagramCard from '@/Components/Diagrams/DiagramCard';
 import ShareAccessModal from '@/Components/Diagrams/ShareAccessModal';
+import InviteModal from '@/Components/Diagrams/InviteModal';
 
 const emptyForm = { name: '', ownerType: 'user', teamId: '' };
 
@@ -14,6 +15,7 @@ export default function DiagramsIndex() {
     const [createForm, setCreateForm] = useState(emptyForm);
     const [visibilityFilter, setVisibilityFilter] = useState('all');
     const [shareDiagram, setShareDiagram] = useState(null);
+    const [inviteDiagram, setInviteDiagram] = useState(null);
 
     const load = async () => {
         const [diagramData, teamData] = await Promise.all([api.get('/api/v1/diagrams'), api.get('/api/v1/teams')]);
@@ -51,20 +53,29 @@ export default function DiagramsIndex() {
         load();
     };
 
-    const duplicateDiagram = async (diagram) => {
-        await api.post('/api/v1/diagrams', {
-            owner_type: diagram.owner_type.includes('team') ? 'team' : 'user',
-            owner_id: diagram.owner_id,
-            name: `${diagram.name} (Copy)`,
-        });
-        load();
-    };
-
     const removeDiagram = async (diagram) => {
         if (!window.confirm(`Delete ${diagram.name}?`)) return;
         await api.delete(`/api/v1/diagrams/${diagram.id}`);
         load();
     };
+
+    const toggleVisibility = async (diagram) => {
+        await api.patch(`/api/v1/diagrams/${diagram.id}/visibility`, { is_public: !diagram.is_public });
+        setDiagrams((current) => current.map((item) => (item.id === diagram.id ? { ...item, is_public: !diagram.is_public } : item)));
+    };
+
+    const renderCard = (diagram) => (
+        <DiagramCard
+            key={diagram.id}
+            diagram={diagram}
+            onOpen={() => router.visit(`/diagrams/${diagram.id}`)}
+            onRename={() => updateName(diagram)}
+            onToggleVisibility={() => toggleVisibility(diagram)}
+            onInvite={() => setInviteDiagram(diagram)}
+            onManageAccess={() => setShareDiagram(diagram)}
+            onDelete={() => removeDiagram(diagram)}
+        />
+    );
 
     return (
         <>
@@ -86,41 +97,13 @@ export default function DiagramsIndex() {
 
                 <div className="rounded-2xl border bg-white p-6">
                     <h2 className="text-lg font-semibold">Personal Diagrams</h2>
-                    <div className="mt-3">
-                        <CarouselRow>
-                            {personal.map((diagram) => (
-                                <DiagramCard
-                                    key={diagram.id}
-                                    diagram={diagram}
-                                    onOpen={() => router.visit(`/diagrams/${diagram.id}`)}
-                                    onRename={() => updateName(diagram)}
-                                    onDuplicate={() => duplicateDiagram(diagram)}
-                                    onShare={() => setShareDiagram(diagram)}
-                                    onDelete={() => removeDiagram(diagram)}
-                                />
-                            ))}
-                        </CarouselRow>
-                    </div>
+                    <div className="mt-3"><CarouselRow>{personal.map(renderCard)}</CarouselRow></div>
                 </div>
 
                 {teamGroups.map((group) => (
                     <div key={group.team.id} className="rounded-2xl border bg-white p-6">
                         <h2 className="text-lg font-semibold">Team: {group.team.name}</h2>
-                        <div className="mt-3">
-                            <CarouselRow>
-                                {group.diagrams.map((diagram) => (
-                                    <DiagramCard
-                                        key={diagram.id}
-                                        diagram={diagram}
-                                        onOpen={() => router.visit(`/diagrams/${diagram.id}`)}
-                                        onRename={() => updateName(diagram)}
-                                        onDuplicate={() => duplicateDiagram(diagram)}
-                                        onShare={() => setShareDiagram(diagram)}
-                                        onDelete={() => removeDiagram(diagram)}
-                                    />
-                                ))}
-                            </CarouselRow>
-                        </div>
+                        <div className="mt-3"><CarouselRow>{group.diagrams.map(renderCard)}</CarouselRow></div>
                     </div>
                 ))}
             </section>
@@ -166,6 +149,17 @@ export default function DiagramsIndex() {
             )}
 
             <ShareAccessModal diagram={shareDiagram} teams={teams} open={Boolean(shareDiagram)} onClose={() => setShareDiagram(null)} />
+            <InviteModal
+                open={Boolean(inviteDiagram)}
+                onClose={() => setInviteDiagram(null)}
+                title="Invite Collaborator"
+                roleOptions={['viewer', 'editor', 'admin']}
+                showScope={Boolean(inviteDiagram && String(inviteDiagram.owner_type).includes('team'))}
+                onSubmit={async (payload) => {
+                    if (!inviteDiagram) return;
+                    await api.post(`/api/v1/diagrams/${inviteDiagram.id}/invite`, payload);
+                }}
+            />
         </>
     );
 }

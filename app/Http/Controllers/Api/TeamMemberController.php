@@ -17,7 +17,7 @@ class TeamMemberController extends Controller
 
         $validated = $request->validate([
             'email' => ['required', 'email'],
-            'role' => ['required', Rule::in(['viewer', 'editor', 'admin'])],
+            'role' => ['required', Rule::in(['member', 'editor', 'admin'])],
         ]);
 
         $user = User::query()->where('email', $validated['email'])->first();
@@ -39,7 +39,7 @@ class TeamMemberController extends Controller
         abort_unless($request->user()->hasTeamRole($team, ['admin', 'owner']), 403);
 
         $validated = $request->validate([
-            'role' => ['required', Rule::in(['viewer', 'editor', 'admin'])],
+            'role' => ['required', Rule::in(['member', 'editor', 'admin'])],
         ]);
 
         $team->users()->updateExistingPivot($user->id, ['role' => $validated['role']]);

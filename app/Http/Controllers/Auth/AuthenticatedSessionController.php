@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\InvitationController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -12,8 +13,12 @@ use Inertia\Response;
 
 class AuthenticatedSessionController extends Controller
 {
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        if ($request->filled('invitation')) {
+            $request->session()->put('pending_invitation_token', $request->string('invitation')->toString());
+        }
+
         return Inertia::render('Auth/Login');
     }
 
@@ -31,6 +36,8 @@ class AuthenticatedSessionController extends Controller
         }
 
         $request->session()->regenerate();
+
+        InvitationController::consumePendingInvitation($request);
 
         return redirect()->intended(route('dashboard', absolute: false));
     }

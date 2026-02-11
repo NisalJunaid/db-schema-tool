@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 const leftNav = [
     { label: 'Diagrams', href: '/diagrams', icon: 'fa-diagram-project' },
-    { label: 'Team Management', href: '/teams', icon: 'fa-people-group' },
+    { label: 'Teams', href: '/teams', icon: 'fa-people-group' },
 ];
 
 export default function MainLayout({ children }) {
@@ -20,9 +20,7 @@ export default function MainLayout({ children }) {
             <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
                 <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
                     <div className="flex items-center gap-6">
-                        <Link href="/dashboard" className="text-lg font-semibold text-indigo-700">
-                            DB Schema Tool
-                        </Link>
+                        <Link href="/dashboard" className="text-lg font-semibold text-indigo-700">DB Schema Tool</Link>
                         <nav className="hidden items-center gap-1 md:flex">
                             {leftNav.map((item) => (
                                 <Link
@@ -38,11 +36,7 @@ export default function MainLayout({ children }) {
                     </div>
 
                     <div className="hidden items-center gap-2 md:flex">
-                        <button
-                            type="button"
-                            onClick={() => setDropdownOpen((current) => !current)}
-                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                        >
+                        <button type="button" onClick={() => setDropdownOpen((current) => !current)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
                             <i className="fa-solid fa-user mr-2" />
                             {authUser?.name}
                             <i className="fa-solid fa-chevron-down ml-2 text-xs" />
@@ -50,33 +44,17 @@ export default function MainLayout({ children }) {
 
                         {dropdownOpen && (
                             <div className="absolute right-8 top-16 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                                <Link href="/profile" className="block rounded-md px-3 py-2 text-sm hover:bg-slate-100">
-                                    <i className="fa-solid fa-id-card mr-2" />
-                                    Profile
-                                </Link>
+                                <Link href="/profile" className="block rounded-md px-3 py-2 text-sm hover:bg-slate-100"><i className="fa-solid fa-id-card mr-2" />Profile</Link>
+                                <Link href="/teams" className="block rounded-md px-3 py-2 text-sm hover:bg-slate-100"><i className="fa-solid fa-people-group mr-2" />Team Management</Link>
                                 {isAdmin && (
-                                    <Link href="/admin/users" className="block rounded-md px-3 py-2 text-sm hover:bg-slate-100">
-                                        <i className="fa-solid fa-user-shield mr-2" />
-                                        User Access
-                                    </Link>
+                                    <Link href="/admin/users" className="block rounded-md px-3 py-2 text-sm hover:bg-slate-100"><i className="fa-solid fa-user-shield mr-2" />User Management</Link>
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={submitLogout}
-                                    className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100"
-                                >
-                                    <i className="fa-solid fa-right-from-bracket mr-2" />
-                                    Logout
-                                </button>
+                                <button type="button" onClick={submitLogout} className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100"><i className="fa-solid fa-right-from-bracket mr-2" />Logout</button>
                             </div>
                         )}
                     </div>
 
-                    <button
-                        type="button"
-                        className="rounded-lg border border-indigo-200 px-3 py-2 text-sm font-medium text-indigo-700 md:hidden"
-                        onClick={() => setMobileOpen((current) => !current)}
-                    >
+                    <button type="button" className="rounded-lg border border-indigo-200 px-3 py-2 text-sm font-medium text-indigo-700 md:hidden" onClick={() => setMobileOpen((current) => !current)}>
                         <i className="fa-solid fa-bars mr-2" /> Menu
                     </button>
                 </div>
@@ -84,22 +62,14 @@ export default function MainLayout({ children }) {
                 {mobileOpen && (
                     <div className="space-y-1 border-t border-slate-200 bg-white px-4 py-3 md:hidden">
                         {leftNav.map((item) => (
-                            <Link key={`mobile-${item.href}`} href={item.href} className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50">
-                                <i className={`fa-solid ${item.icon} mr-2`} />
-                                {item.label}
-                            </Link>
+                            <Link key={`mobile-${item.href}`} href={item.href} className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50"><i className={`fa-solid ${item.icon} mr-2`} />{item.label}</Link>
                         ))}
-                        <Link href="/profile" className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50">
-                            <i className="fa-solid fa-id-card mr-2" />Profile
-                        </Link>
+                        <Link href="/profile" className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50"><i className="fa-solid fa-id-card mr-2" />Profile</Link>
+                        <Link href="/teams" className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50"><i className="fa-solid fa-people-group mr-2" />Team Management</Link>
                         {isAdmin && (
-                            <Link href="/admin/users" className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50">
-                                <i className="fa-solid fa-user-shield mr-2" />User Access
-                            </Link>
+                            <Link href="/admin/users" className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50"><i className="fa-solid fa-user-shield mr-2" />User Management</Link>
                         )}
-                        <button type="button" onClick={submitLogout} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50">
-                            <i className="fa-solid fa-right-from-bracket mr-2" />Logout
-                        </button>
+                        <button type="button" onClick={submitLogout} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50"><i className="fa-solid fa-right-from-bracket mr-2" />Logout</button>
                     </div>
                 )}
             </header>

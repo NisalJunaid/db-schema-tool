@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\InvitationController;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
@@ -15,8 +16,12 @@ use Inertia\Response;
 
 class RegisteredUserController extends Controller
 {
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        if ($request->filled('invitation')) {
+            $request->session()->put('pending_invitation_token', $request->string('invitation')->toString());
+        }
+
         return Inertia::render('Auth/Register');
     }
 
@@ -37,6 +42,8 @@ class RegisteredUserController extends Controller
         event(new Registered($user));
 
         Auth::login($user);
+
+        InvitationController::consumePendingInvitation($request);
 
         return redirect(route('dashboard', absolute: false));
     }
