@@ -15,7 +15,7 @@ export default function AuthenticatedLayout({ children }) {
             <header className="border-b bg-white">
                 <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
                     <Link href="/dashboard" className="font-semibold text-gray-900">
-                        <AppLogo className="h-9 w-auto" />
+                        <AppLogo className="h-10 w-auto" />
                     </Link>
                     <div className="flex items-center gap-4">
                         <span className="text-sm text-gray-600">{user?.email}</span>
