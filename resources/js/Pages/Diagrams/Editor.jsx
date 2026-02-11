@@ -13,7 +13,7 @@ import ExportModal from '@/Components/Diagram/modals/ExportModal';
 import NewDiagramModal from '@/Components/Diagram/modals/NewDiagramModal';
 import OpenDiagramModal from '@/Components/Diagram/modals/OpenDiagramModal';
 import RelationshipModal from '@/Components/Diagram/modals/RelationshipModal';
-import { asCollection, parseColumnIdFromHandle, relationshipLabel, toColumnHandleId } from '@/Components/Diagram/utils';
+import { asCollection, computeTableDimensions, getTableColorMeta, parseColumnIdFromHandle, relationshipLabel, toColumnHandleId } from '@/Components/Diagram/utils';
 import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
 const defaultTableSize = { w: 320, h: 240 };
@@ -47,6 +47,7 @@ export default function DiagramEditor() {
     const { diagramId } = usePage().props;
     const reactFlowRef = useRef(null);
     const viewportSaveTimerRef = useRef(null);
+    const editModeNoticeTimerRef = useRef(null);
 
     const [diagram, setDiagram] = useState(null);
     const [tables, setTables] = useState([]);
@@ -59,7 +60,11 @@ export default function DiagramEditor() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [activeEditTableId, setActiveEditTableId] = useState(null);
     const [selectedColumnId, setSelectedColumnId] = useState(null);
+    const [selectedNodeId, setSelectedNodeId] = useState(null);
     const [selectedEdgeId, setSelectedEdgeId] = useState(null);
+    const [showMiniMap, setShowMiniMap] = useState(true);
+    const [showGrid, setShowGrid] = useState(true);
+    const [editModeNotice, setEditModeNotice] = useState('');
     const [history, setHistory] = useState({ past: [], present: null, future: [] });
 
     const [showAddTableModal, setShowAddTableModal] = useState(false);
@@ -186,6 +191,10 @@ export default function DiagramEditor() {
         loadMeta().catch(() => {});
     }, []);
 
+    useEffect(() => () => {
+        if (editModeNoticeTimerRef.current) clearTimeout(editModeNoticeTimerRef.current);
+    }, []);
+
     const onRenameTable = useCallback(async (tableId, name) => {
         if (!editMode) return;
         const previousTables = tables;
@@ -235,11 +244,29 @@ export default function DiagramEditor() {
     }, [commitEditorState, editMode, relationships, tables]);
 
     const onToggleActiveEditTable = useCallback((tableId) => setActiveEditTableId((current) => (Number(current) === Number(tableId) ? null : tableId)), []);
+    const notifyEditModeRequired = useCallback(() => {
+        setEditModeNotice('Enable Edit Mode to delete');
+        window.clearTimeout(editModeNoticeTimerRef.current);
+        editModeNoticeTimerRef.current = window.setTimeout(() => setEditModeNotice(''), 2200);
+    }, []);
     const buildNodeData = useCallback((table) => ({ table, editMode, selectedColumnId, isActiveEditTable: Number(activeEditTableId) === Number(table.id), onToggleActiveEditTable, onRenameTable, onUpdateTableColor, onAddColumn, onEditColumn, onDeleteColumn }), [activeEditTableId, editMode, selectedColumnId, onToggleActiveEditTable, onRenameTable, onUpdateTableColor, onAddColumn, onEditColumn, onDeleteColumn]);
 
     useEffect(() => {
-        setNodes(tables.map((table) => ({ id: String(table.id), type: 'tableNode', draggable: editMode, position: { x: Number(table.x ?? 0), y: Number(table.y ?? 0) }, data: buildNodeData(table), style: { width: Number(table.w ?? defaultTableSize.w), height: Number(table.h ?? defaultTableSize.h) } })));
-    }, [tables, editMode, selectedColumnId, buildNodeData]);
+        setNodes(tables.map((table) => {
+            const computedDimensions = computeTableDimensions(table);
+            const width = Number(table.w ?? computedDimensions.width ?? defaultTableSize.w);
+            const height = Number(table.h ?? computedDimensions.height ?? defaultTableSize.h);
+            return {
+                id: String(table.id),
+                type: 'tableNode',
+                draggable: editMode,
+                position: { x: Number(table.x ?? 0), y: Number(table.y ?? 0) },
+                data: buildNodeData(table),
+                style: { width, height },
+                selected: selectedNodeId === String(table.id),
+            };
+        }));
+    }, [tables, editMode, selectedColumnId, buildNodeData, selectedNodeId]);
 
     const edges = useMemo(() => relationships.map((relationship) => {
         const sourceTableId = columnToTableMap[relationship.from_column_id];
@@ -256,10 +283,12 @@ export default function DiagramEditor() {
             label: relationshipLabel(relationship.type),
             animated: false,
             data: { type: relationship.type },
+            selected: isSelected,
             style: {
                 strokeDasharray: '5 5',
-                strokeWidth: isSelected ? 3 : 2,
+                strokeWidth: isSelected ? 4 : 2,
                 stroke: relationship.color || '#64748b',
+                opacity: isSelected ? 1 : 0.9,
             },
             labelStyle: { fill: '#334155', fontSize: 11, fontWeight: 600 },
         };
@@ -280,10 +309,15 @@ export default function DiagramEditor() {
         setRelationshipModalState({ open: true, mode: 'create', type: 'one_to_many' });
     }, [editMode, relationships]);
 
+    const onNodeClick = useCallback((_, node) => {
+        setSelectedNodeId(String(node.id));
+        setSelectedEdgeId(null);
+    }, []);
+
     const onEdgeClick = useCallback((_, edge) => {
-        if (!editMode) return;
         setSelectedEdgeId(String(edge.id));
-    }, [editMode]);
+        setSelectedNodeId(null);
+    }, []);
 
     const onEdgeDoubleClick = useCallback((_, edge) => {
         if (!editMode) return;
@@ -294,7 +328,11 @@ export default function DiagramEditor() {
     }, [editMode, relationships]);
 
     const deleteSelectedRelationship = useCallback(async () => {
-        if (!editMode || !selectedEdgeId) return;
+        if (!selectedEdgeId) return;
+        if (!editMode) {
+            notifyEditModeRequired();
+            return;
+        }
         const previousRelationships = relationships;
         const nextRelationships = relationships.filter((relationship) => String(relationship.id) !== String(selectedEdgeId));
         commitEditorState(tables, nextRelationships, tables, previousRelationships);
@@ -308,7 +346,70 @@ export default function DiagramEditor() {
             setSavingState('Error');
             setError(deleteError.message || 'Failed to delete relationship.');
         }
-    }, [commitEditorState, editMode, relationships, selectedEdgeId, tables]);
+    }, [commitEditorState, editMode, notifyEditModeRequired, relationships, selectedEdgeId, tables]);
+
+    const deleteSelectedNode = useCallback(async () => {
+        if (!selectedNodeId) return;
+        if (!editMode) {
+            notifyEditModeRequired();
+            return;
+        }
+        const deletedTable = tables.find((table) => String(table.id) === String(selectedNodeId));
+        if (!deletedTable) return;
+        const deletedColumnIds = new Set((deletedTable.columns ?? []).map((column) => Number(column.id)));
+        const previousTables = tables;
+        const previousRelationships = relationships;
+        const nextTables = tables.filter((table) => String(table.id) !== String(selectedNodeId));
+        const nextRelationships = relationships.filter((relationship) => {
+            const sourceTableId = columnToTableMap[relationship.from_column_id];
+            const targetTableId = columnToTableMap[relationship.to_column_id];
+            if (String(sourceTableId) === String(selectedNodeId) || String(targetTableId) === String(selectedNodeId)) return false;
+            if (deletedColumnIds.has(Number(relationship.from_column_id)) || deletedColumnIds.has(Number(relationship.to_column_id))) return false;
+            return true;
+        });
+        commitEditorState(nextTables, nextRelationships, previousTables, previousRelationships);
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        try {
+            setSavingState('Saving...');
+            await api.delete(`/api/v1/diagram-tables/${selectedNodeId}`);
+            setSavingState('Autosaved');
+        } catch (deleteError) {
+            setTables(previousTables);
+            setRelationships(previousRelationships);
+            setSavingState('Error');
+            setError(deleteError.message || 'Failed to delete table.');
+        }
+    }, [columnToTableMap, commitEditorState, editMode, notifyEditModeRequired, relationships, selectedNodeId, tables]);
+
+    const deleteSelection = useCallback(async () => {
+        if (selectedEdgeId) {
+            await deleteSelectedRelationship();
+            return;
+        }
+        if (selectedNodeId) await deleteSelectedNode();
+    }, [deleteSelectedNode, deleteSelectedRelationship, selectedEdgeId, selectedNodeId]);
+
+    useEffect(() => {
+        const onKeyDown = (event) => {
+            if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+            if (!selectedEdgeId && !selectedNodeId) return;
+            event.preventDefault();
+            deleteSelection();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [deleteSelection, selectedEdgeId, selectedNodeId]);
+
+    const miniMapNodeColor = useCallback((node) => {
+        const colorValue = node?.data?.table?.color ?? node?.data?.color;
+        return getTableColorMeta(colorValue).solid;
+    }, []);
+
+    const miniMapNodeStrokeColor = useCallback((node) => {
+        const colorValue = node?.data?.table?.color ?? node?.data?.color;
+        return getTableColorMeta(colorValue).solid;
+    }, []);
 
     const submitRelationship = async (event) => {
         event.preventDefault();
@@ -381,7 +482,8 @@ export default function DiagramEditor() {
             const tableColors = tables.map((table) => table.color).filter(Boolean);
             const color = pickNextColor(tableColors);
             setSavingState('Saving...');
-            const response = await api.post('/api/v1/diagram-tables', { diagram_id: Number(diagramId), name: addTableForm.name, schema: addTableForm.schema || null, color, x: 120, y: 120, w: defaultTableSize.w, h: defaultTableSize.h });
+            const defaultDimensions = computeTableDimensions({ name: addTableForm.name, columns: [] });
+            const response = await api.post('/api/v1/diagram-tables', { diagram_id: Number(diagramId), name: addTableForm.name, schema: addTableForm.schema || null, color, x: 120, y: 120, w: defaultDimensions.width, h: defaultDimensions.height });
             const nextTables = [...tables, { ...normalizeTable(response?.data ?? response), color }];
             commitEditorState(nextTables, relationships, tables, relationships);
             setShowAddTableModal(false);
@@ -492,11 +594,16 @@ export default function DiagramEditor() {
                         onRedo={redoHistory}
                         canUndo={canUndo}
                         canRedo={canRedo}
-                        onDeleteRelationship={deleteSelectedRelationship}
-                        canDeleteRelationship={editMode && Boolean(selectedEdgeId)}
+                        onDeleteSelection={deleteSelection}
+                        canDeleteSelection={Boolean(selectedEdgeId || selectedNodeId)}
+                        showMiniMap={showMiniMap}
+                        showGrid={showGrid}
+                        onToggleMiniMap={() => setShowMiniMap((current) => !current)}
+                        onToggleGrid={() => setShowGrid((current) => !current)}
                     />
 
                     {!editMode && <div className="mx-4 mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">View mode</div>}
+                    {editModeNotice && <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">{editModeNotice}</div>}
 
                     {error && (
                         <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -516,16 +623,17 @@ export default function DiagramEditor() {
                             onNodesChange={onNodesChange}
                             onNodeDragStop={onNodeDragStop}
                             onConnect={onConnect}
+                            onNodeClick={onNodeClick}
                             onEdgeClick={onEdgeClick}
                             onEdgeDoubleClick={onEdgeDoubleClick}
-                            onPaneClick={() => setSelectedEdgeId(null)}
+                            onPaneClick={() => { setSelectedEdgeId(null); setSelectedNodeId(null); }}
                             onMoveEnd={(_, viewport) => handleViewportSave(viewport)}
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={{ type: 'bezier' }}
                             connectionMode="strict"
                         >
-                            <Background gap={20} size={1} color="#cbd5e1" />
-                            <MiniMap pannable zoomable />
+                            {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
+                            {showMiniMap && <MiniMap pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
                             <Controls showInteractive={false} position="bottom-left">
                                 <ControlButton onClick={() => setEditMode((current) => !current)} title="Edit mode" className={editMode ? '!bg-indigo-600 !text-white hover:!bg-indigo-700' : ''}>
                                     <i className="fa-solid fa-pen-to-square" aria-hidden="true" />

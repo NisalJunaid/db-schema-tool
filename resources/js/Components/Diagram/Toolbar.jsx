@@ -11,7 +11,25 @@ function IconButton({ title, onClick, icon, className = '', disabled = false }) 
     );
 }
 
-export default function Toolbar({ savingState, onSave, onImport, onExport, onExportImage, onNewDiagram, onOpenDiagram, onUndo, onRedo, canUndo, canRedo, onDeleteRelationship, canDeleteRelationship }) {
+export default function Toolbar({
+    savingState,
+    onSave,
+    onImport,
+    onExport,
+    onExportImage,
+    onNewDiagram,
+    onOpenDiagram,
+    onUndo,
+    onRedo,
+    canUndo,
+    canRedo,
+    onDeleteSelection,
+    canDeleteSelection,
+    showMiniMap,
+    showGrid,
+    onToggleMiniMap,
+    onToggleGrid,
+}) {
     return (
         <div className="sticky top-0 z-30 flex items-center border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
             <div className="flex items-center gap-x-4">
@@ -43,11 +61,25 @@ export default function Toolbar({ savingState, onSave, onImport, onExport, onExp
                 </div>
 
                 <div className="flex items-center gap-x-2">
-                    <IconButton title="Delete selected relationship" onClick={onDeleteRelationship} icon="fa-solid fa-trash" className="text-rose-600 hover:text-rose-700" disabled={!canDeleteRelationship} />
+                    <IconButton title="Delete selection" onClick={onDeleteSelection} icon="fa-solid fa-trash" className="text-rose-600 hover:text-rose-700" disabled={!canDeleteSelection} />
                 </div>
             </div>
 
-            <span className="ml-auto rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{savingState}</span>
+            <div className="ml-auto flex items-center gap-2">
+                <IconButton
+                    title="Toggle minimap"
+                    onClick={onToggleMiniMap}
+                    icon="fa-solid fa-map"
+                    className={showMiniMap ? 'border-indigo-300 text-indigo-700' : ''}
+                />
+                <IconButton
+                    title="Toggle grid"
+                    onClick={onToggleGrid}
+                    icon="fa-solid fa-border-all"
+                    className={showGrid ? 'border-indigo-300 text-indigo-700' : ''}
+                />
+                <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{savingState}</span>
+            </div>
         </div>
     );
 }
