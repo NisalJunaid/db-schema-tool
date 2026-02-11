@@ -1,15 +1,15 @@
 import DiagramActionsMenu from './DiagramActionsMenu';
 
 export default function DiagramCard({ diagram, onOpen, onRename, onToggleVisibility, onInvite, onManageAccess, onDelete }) {
-    const previewUrl = diagram.preview_path
-        ? `${diagram.preview_path}${diagram.updated_at ? `?v=${new Date(diagram.updated_at).getTime()}` : ''}`
-        : diagram.preview_image;
+    const previewUrl = diagram.preview_url || diagram.preview_path || diagram.preview_image;
+    const cacheKey = diagram.updated_at ? `?v=${new Date(diagram.updated_at).getTime()}` : '';
+    const previewSrc = previewUrl ? `${previewUrl}${cacheKey}` : null;
 
     return (
         <div className="min-w-[280px] snap-start rounded-xl border border-slate-200 bg-white p-4 shadow-sm" onClick={onOpen}>
             <div className="mb-3 h-36 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                {previewUrl ? (
-                    <img src={previewUrl} alt={`${diagram.name} preview`} className="h-full w-full object-cover" />
+                {previewSrc ? (
+                    <img src={previewSrc} alt={`${diagram.name} preview`} className="h-full w-full object-cover" />
                 ) : (
                     <div className="flex h-full items-center justify-center text-sm text-slate-500">No preview yet</div>
                 )}

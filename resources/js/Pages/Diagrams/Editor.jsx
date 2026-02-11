@@ -578,14 +578,20 @@ function DiagramEditorContent() {
         });
     };
 
+    const dataUrlToBlob = async (dataUrl) => {
+        const response = await fetch(dataUrl);
+        return response.blob();
+    };
+
     async function uploadDiagramPreview() {
         const pngDataUrl = await generatePreviewDataUrl();
         if (!pngDataUrl) return;
-        const response = await fetch(pngDataUrl);
-        const blob = await response.blob();
+
+        const blob = await dataUrlToBlob(pngDataUrl);
         const formData = new FormData();
-        formData.append('preview', new File([blob], `diagram-${diagramId}.png`, { type: 'image/png' }));
-        await api.postForm(`/api/v1/diagrams/${diagramId}/preview`, formData);
+        formData.append('preview', blob, 'preview.png');
+
+        await api.post(`/api/v1/diagrams/${diagramId}/preview`, formData);
     }
 
     function schedulePreviewUpload() {

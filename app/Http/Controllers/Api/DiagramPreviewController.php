@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Diagram;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class DiagramPreviewController extends Controller
 {
@@ -15,20 +14,17 @@ class DiagramPreviewController extends Controller
         $this->authorize('update', $diagram);
 
         $validated = $request->validate([
-            'preview' => ['required', 'file', 'mimes:png', 'max:4096'],
+            'preview' => ['required', 'image', 'max:4096'],
         ]);
 
-        $path = "diagram-previews/{$diagram->id}.png";
-        Storage::disk('public')->putFileAs('diagram-previews', $validated['preview'], "{$diagram->id}.png");
+        $path = $validated['preview']->store('diagram-previews', 'public');
 
-        $diagram->update([
-            'preview_path' => $path,
-        ]);
+        $diagram->preview_path = $path;
+        $diagram->save();
 
         return response()->json([
-            'diagram' => $diagram->fresh(),
-            'preview_url' => Storage::url($path),
+            'preview_path' => $path,
+            'preview_url' => $diagram->preview_url,
         ]);
     }
 }
-

@@ -26,14 +26,19 @@ class TeamPolicy
         return $user->teams()->whereKey($team->getKey())->exists();
     }
 
+    public function viewMembers(User $user, Team $team): bool
+    {
+        return $user->teams()->whereKey($team->getKey())->exists();
+    }
+
     public function manageMembers(User $user, Team $team): bool
     {
-        return $user->hasTeamRole($team, ['admin', 'owner']);
+        return $this->manageTeam($user, $team);
     }
 
     public function manageTeam(User $user, Team $team): bool
     {
-        return $this->manageMembers($user, $team);
+        return $user->isTeamOwner($team) || $user->hasTeamRole($team, ['admin']);
     }
 
     public function manage(User $user, Team $team): bool

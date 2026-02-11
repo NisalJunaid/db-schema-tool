@@ -43,11 +43,7 @@ export default function DiagramsIndex() {
 
             setDiagrams(asCollection(diagramData));
             setTeams(asCollection(teamData));
-            setInvitations(
-                asCollection(invitationData).filter(
-                    (invitation) => `${invitation.type}`.toLowerCase() === 'diagram' && `${invitation.status}`.toLowerCase() === 'pending',
-                ),
-            );
+            setInvitations(asCollection(invitationData).filter((invitation) => `${invitation.status}`.toLowerCase() === 'pending'));
         } catch (error) {
             setBannerError(error.message || 'Unable to load diagrams. Please refresh and try again.');
         } finally {
@@ -70,19 +66,30 @@ export default function DiagramsIndex() {
         });
     }, [diagrams, search, visibilityFilter]);
 
+    const teamInvites = useMemo(
+        () => invitations.filter((invitation) => `${invitation.type}`.toLowerCase() === 'team'),
+        [invitations],
+    );
+
+    const diagramInvites = useMemo(
+        () => invitations.filter((invitation) => `${invitation.type}`.toLowerCase() === 'diagram'),
+        [invitations],
+    );
+
     const personalDiagrams = filtered
         .filter((diagram) => `${diagram.owner_type}`.toLowerCase().includes('user'))
         .map((diagram) => ({ ...diagram, owner_label: 'Personal' }));
 
     const teamGroups = teams.map((team) => ({
         team,
+        invitations: teamInvites.filter((invitation) => Number(invitation.team_id) === Number(team.id)),
         diagrams: filtered
             .filter((diagram) => `${diagram.owner_type}`.toLowerCase().includes('team') && Number(diagram.owner_id) === Number(team.id))
             .map((diagram) => ({ ...diagram, owner_label: team.name || 'Team' })),
     }));
 
     const personalCards = [
-        ...invitations.map((invitation) => ({ type: 'invitation', key: `invitation-${invitation.id}`, invitation })),
+        ...diagramInvites.map((invitation) => ({ type: 'invitation', key: `invitation-${invitation.id}`, invitation })),
         ...personalDiagrams.map((diagram) => ({ type: 'diagram', key: `diagram-${diagram.id}`, diagram })),
     ];
 
@@ -111,9 +118,10 @@ export default function DiagramsIndex() {
 
         try {
             const response = await api.post(`/api/v1/invitations/${invitation.id}/accept`);
-            const acceptedDiagram = response?.diagram || response?.data?.diagram || response?.data;
+            const payload = response?.data ?? response;
+            const acceptedDiagram = payload?.diagram;
 
-            if (acceptedDiagram?.id) {
+            if (`${invitation.type}`.toLowerCase() === 'diagram' && acceptedDiagram?.id) {
                 setDiagrams((current) => {
                     const existingIndex = current.findIndex((item) => Number(item.id) === Number(acceptedDiagram.id));
                     if (existingIndex >= 0) {
@@ -125,6 +133,16 @@ export default function DiagramsIndex() {
                 const diagramData = await api.get('/api/v1/diagrams');
                 setDiagrams(asCollection(diagramData));
             }
+
+            if (`${invitation.type}`.toLowerCase() === 'team') {
+                const [teamData, invitationData] = await Promise.all([
+                    api.get('/api/v1/teams'),
+                    api.get('/api/v1/invitations'),
+                ]);
+                setTeams(asCollection(teamData));
+                setInvitations(asCollection(invitationData).filter((item) => `${item.status}`.toLowerCase() === 'pending'));
+            }
+
             setToast({ message: 'Invitation accepted', variant: 'success' });
         } catch (error) {
             setInvitations(previousInvitations);
@@ -216,9 +234,9 @@ export default function DiagramsIndex() {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <h2 className="text-lg font-semibold text-slate-900">
                             Personal
-                            {invitations.length > 0 && (
+                            {diagramInvites.length > 0 && (
                                 <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
-                                    {invitations.length} pending invitation{invitations.length > 1 ? 's' : ''}
+                                    {diagramInvites.length} pending invitation{diagramInvites.length > 1 ? 's' : ''}
                                 </span>
                             )}
                         </h2>
@@ -258,7 +276,7 @@ export default function DiagramsIndex() {
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                         <h2 className="text-lg font-semibold text-slate-900">Teams</h2>
-                        {teamGroups.every((group) => group.diagrams.length === 0) && (
+                        {teamGroups.every((group) => group.diagrams.length === 0 && group.invitations.length === 0) && (
                             <Link href="/teams" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
                                 Manage teams
                             </Link>
@@ -266,14 +284,21 @@ export default function DiagramsIndex() {
                     </div>
 
                     <div className="mt-4 space-y-6">
-                        {teamGroups.length === 0 || teamGroups.every((group) => group.diagrams.length === 0) ? (
+                        {teamGroups.length === 0 || teamGroups.every((group) => group.diagrams.length === 0 && group.invitations.length === 0) ? (
                             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
                                 <p className="text-sm text-slate-600">No team diagrams available yet.</p>
                             </div>
                         ) : (
                             teamGroups.map((group) => (
                                 <div key={group.team.id}>
-                                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">{group.team.name}</h3>
+                                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">
+                                        {group.team.name}
+                                        {group.invitations.length > 0 && (
+                                            <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                                                {group.invitations.length} invite{group.invitations.length > 1 ? 's' : ''}
+                                            </span>
+                                        )}
+                                    </h3>
                                     <CarouselRow
                                         emptyState={
                                             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
@@ -281,6 +306,15 @@ export default function DiagramsIndex() {
                                             </div>
                                         }
                                     >
+                                        {group.invitations.map((invitation) => (
+                                            <InvitationDiagramCard
+                                                key={`invitation-${invitation.id}`}
+                                                invitation={invitation}
+                                                busyAction={busyAction}
+                                                onAccept={handleAcceptInvitation}
+                                                onDecline={handleDeclineInvitation}
+                                            />
+                                        ))}
                                         {group.diagrams.map(renderCard)}
                                     </CarouselRow>
                                 </div>

@@ -62,6 +62,7 @@ class DiagramController extends Controller
                     'is_public' => $diagram->is_public,
                     'preview_image' => $diagram->preview_image,
                     'preview_path' => $diagram->preview_path ? Storage::url($diagram->preview_path) : null,
+                    'preview_url' => $diagram->preview_url,
                     'updated_at' => $diagram->updated_at,
                     'permissions' => $this->diagramPermissions($request, $diagram),
                 ];
@@ -154,6 +155,8 @@ class DiagramController extends Controller
                     'email' => ['Team invitation is not available for this diagram.'],
                 ]);
             }
+
+            $this->authorize('manageTeam', $diagram->owner);
 
             $alreadyInTeam = $diagram->owner->users()
                 ->whereRaw('LOWER(TRIM(users.email)) = ?', [$email])

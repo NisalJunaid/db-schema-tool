@@ -13,7 +13,7 @@ class TeamMemberController extends Controller
 {
     public function store(Request $request, Team $team): JsonResponse
     {
-        $this->authorize('manageMembers', $team);
+        $this->authorize('manageTeam', $team);
 
         $validated = $request->validate([
             'email' => ['required', 'email'],
@@ -36,7 +36,7 @@ class TeamMemberController extends Controller
 
     public function update(Request $request, Team $team, User $user): JsonResponse
     {
-        $this->authorize('manageMembers', $team);
+        $this->authorize('manageTeam', $team);
 
         $validated = $request->validate([
             'role' => ['required', Rule::in(['member', 'editor', 'admin'])],
@@ -49,7 +49,7 @@ class TeamMemberController extends Controller
 
     public function destroy(Request $request, Team $team, User $user): JsonResponse
     {
-        $this->authorize('manageMembers', $team);
+        $this->authorize('manageTeam', $team);
 
         if ((int) $team->owner_user_id === (int) $user->id) {
             return response()->json(['message' => 'Team owner cannot be removed.'], 422);

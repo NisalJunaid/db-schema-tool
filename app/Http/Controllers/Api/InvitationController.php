@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Mail\InvitationMail;
+use App\Models\Diagram;
 use App\Models\DiagramAccess;
 use App\Models\Invitation;
 use App\Models\User;
@@ -11,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 class InvitationController extends Controller
 {
@@ -97,6 +99,7 @@ class InvitationController extends Controller
             'ok' => $accepted,
             'message' => $message,
             'invitation' => $invitation->fresh(),
+            'diagram' => $accepted ? $this->resolveDiagramPayload($invitation) : null,
         ], $accepted ? 200 : 422);
     }
 
@@ -134,7 +137,12 @@ class InvitationController extends Controller
 
     public function resend(Request $request, Invitation $invitation): JsonResponse
     {
-        abort_unless($request->user()->hasAppRole(['admin', 'super_admin']), 403);
+        $user = $request->user();
+
+        if (! $user->hasAppRole(['admin', 'super_admin'])) {
+            abort_unless($invitation->type === 'team' && $invitation->team, 403);
+            $this->authorize('manageTeam', $invitation->team);
+        }
 
         $invitation->loadMissing(['inviter:id,name,email', 'team:id,name', 'diagram:id,name']);
 
@@ -144,6 +152,32 @@ class InvitationController extends Controller
             'message' => $mailStatus['success'] ? 'Invitation email resent.' : 'Invitation email resend failed, invitation is still active.',
             'invitation' => $invitation->fresh(),
         ]);
+    }
+
+
+    private function resolveDiagramPayload(Invitation $invitation): ?array
+    {
+        if (! $invitation->diagram_id) {
+            return null;
+        }
+
+        $diagram = Diagram::query()->find($invitation->diagram_id);
+
+        if (! $diagram) {
+            return null;
+        }
+
+        return [
+            'id' => $diagram->id,
+            'name' => $diagram->name,
+            'owner_type' => $diagram->owner_type,
+            'owner_id' => $diagram->owner_id,
+            'is_public' => $diagram->is_public,
+            'preview_image' => $diagram->preview_image,
+            'preview_path' => $diagram->preview_path,
+            'preview_url' => $diagram->preview_path ? Storage::url($diagram->preview_path) : null,
+            'updated_at' => $diagram->updated_at,
+        ];
     }
 
     public static function sendInvitationMail(Invitation $invitation): array
