@@ -20,6 +20,8 @@ import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 const defaultTableSize = { w: 320, h: 240 };
 const defaultColumnForm = { tableId: '', preset: '', name: '', type: 'VARCHAR(255)', nullable: false, primary: false, unique: false, default: '' };
 const diagramColorPalette = ['#6366f1', '#0ea5e9', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e'];
+const IMAGE_EXPORT_SECURITY_MESSAGE = "Image export blocked by browser security (cross-origin assets). If you're using CDN fonts/icons, bundle them locally.";
+const isImageSecurityError = (error) => error?.name === 'SecurityError' || /tainted canvases|cross-origin/i.test(error?.message ?? '');
 
 const normalizeTable = (rawTable) => ({ ...rawTable, columns: asCollection(rawTable.columns ?? rawTable.diagram_columns, 'diagram_columns') });
 const cloneState = (value) => JSON.parse(JSON.stringify(value));
@@ -94,6 +96,7 @@ function DiagramEditorContent() {
     const canView = Boolean(permissions.canView ?? true);
     const canEdit = Boolean(permissions.canEdit);
     const canManageAccess = Boolean(permissions.canManageAccess);
+    const showSignInCta = error.includes(SESSION_EXPIRED_MESSAGE);
 
 
     const columnToTableMap = useMemo(() => {
@@ -572,11 +575,24 @@ function DiagramEditorContent() {
         const target = document.querySelector('.react-flow__viewport');
         if (!target) return null;
 
-        return toPng(target, {
-            pixelRatio: 1,
-            backgroundColor: '#f8fafc',
-            cacheBust: true,
-        });
+        try {
+            return await toPng(target, {
+                pixelRatio: 1,
+                backgroundColor: '#f8fafc',
+                cacheBust: true,
+                filter: (node) => {
+                    if (!(node instanceof Element)) return true;
+                    return !node.closest('.react-flow__controls, .react-flow__minimap, [role="menu"], .dropdown-menu, .popover, [data-html-to-image-ignore="true"]');
+                },
+            });
+        } catch (generationError) {
+            console.warn('Failed to generate diagram preview image:', generationError);
+            if (isImageSecurityError(generationError)) {
+                setError(IMAGE_EXPORT_SECURITY_MESSAGE);
+                return null;
+            }
+            throw generationError;
+        }
     };
 
     const dataUrlToBlob = async (dataUrl) => {
@@ -585,18 +601,29 @@ function DiagramEditorContent() {
     };
 
     async function uploadDiagramPreview() {
-        const pngDataUrl = await generatePreviewDataUrl();
-        if (!pngDataUrl) return;
+        try {
+            const pngDataUrl = await generatePreviewDataUrl();
+            if (!pngDataUrl) return;
 
-        const blob = await dataUrlToBlob(pngDataUrl);
-        const formData = new FormData();
-        formData.append('preview', blob, 'preview.png');
+            const blob = await dataUrlToBlob(pngDataUrl);
+            const formData = new FormData();
+            formData.append('preview', blob, 'preview.png');
 
-        const response = await api.post(`/api/v1/diagrams/${diagramId}/preview`, formData);
-        const payload = response?.data ?? response;
+            const response = await api.post(`/api/v1/diagrams/${diagramId}/preview`, formData);
+            const payload = response?.data ?? response;
 
-        if (payload?.preview_url) {
-            setDiagram((current) => (current ? { ...current, preview_url: payload.preview_url } : current));
+            if (payload?.preview_url || payload?.preview_path) {
+                // Regression check: manual save should refresh diagram cards with new preview metadata immediately.
+                setDiagram((current) => (current
+                    ? {
+                        ...current,
+                        preview_url: payload.preview_url ?? current.preview_url,
+                        preview_path: payload.preview_path ?? current.preview_path,
+                    }
+                    : current));
+            }
+        } catch (uploadError) {
+            console.warn('Skipping preview upload because image generation failed:', uploadError);
         }
     }
 
@@ -621,15 +648,29 @@ function DiagramEditorContent() {
     const exportImage = async () => {
         const target = document.querySelector('.react-flow__viewport');
         if (!target) return;
-        const pngDataUrl = await toPng(target, {
-            pixelRatio: 2,
-            backgroundColor: '#f8fafc',
-        });
+        try {
+            // Regression check: Export Image should download diagram.png without taint errors.
+            const pngDataUrl = await toPng(target, {
+                pixelRatio: 2,
+                backgroundColor: '#f8fafc',
+                cacheBust: true,
+                filter: (node) => {
+                    if (!(node instanceof Element)) return true;
+                    return !node.closest('.react-flow__controls, .react-flow__minimap, [role="menu"], .dropdown-menu, .popover, [data-html-to-image-ignore="true"]');
+                },
+            });
 
-        const link = document.createElement('a');
-        link.download = 'diagram.png';
-        link.href = pngDataUrl;
-        link.click();
+            const link = document.createElement('a');
+            link.download = 'diagram.png';
+            link.href = pngDataUrl;
+            link.click();
+        } catch (exportError) {
+            if (isImageSecurityError(exportError)) {
+                setError(IMAGE_EXPORT_SECURITY_MESSAGE);
+                return;
+            }
+            setError('Unable to export diagram image. Please try again.');
+        }
     };
 
     const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
@@ -691,7 +732,7 @@ function DiagramEditorContent() {
                     {error && (
                         <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                             <span>{error}</span>
-                            <button type="button" onClick={() => router.get('/login')} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100">Sign in</button>
+                            {showSignInCta && <button type="button" onClick={() => router.get('/login')} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100">Sign in</button>}
                         </div>
                     )}
 

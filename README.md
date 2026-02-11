@@ -75,3 +75,5 @@ php artisan storage:link
 ```
 
 If this symlink is missing, diagram cards may keep showing "No preview yet" even when preview uploads succeed.
+
+> DEV note: if previews upload but thumbnails still do not appear, run `php artisan storage:link` again and verify `public/storage` points to `storage/app/public`.
