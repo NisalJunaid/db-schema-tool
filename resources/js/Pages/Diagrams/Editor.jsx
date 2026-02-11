@@ -1,6 +1,6 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toPng } from 'html-to-image';
+import { toBlob, toPng } from 'html-to-image';
 import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
@@ -641,47 +641,47 @@ function DiagramEditorContent() {
         URL.revokeObjectURL(link.href);
     };
 
-    const exportImage = async () => {
-        const el = document.querySelector('.react-flow');
-        if (!el) return;
+    async function exportImage() {
+        const node = document.querySelector('.react-flow');
+
+        if (!node) {
+            alert('Diagram not found');
+            return;
+        }
 
         try {
-            const dataUrl = await toPng(el, {
+            const blob = await toBlob(node, {
                 backgroundColor: '#f8fafc',
+                pixelRatio: 2,
                 cacheBust: true,
                 useCORS: true,
-                pixelRatio: 2,
-                style: { transform: 'none' },
-                filter: (node) => {
-                    if (!node) return true;
-
-                    const cls = node.classList || [];
+                filter: (el) => {
+                    if (!el) return true;
+                    const cls = el.classList || [];
 
                     if (cls.contains('react-flow__controls')) return false;
                     if (cls.contains('react-flow__minimap')) return false;
                     if (cls.contains('editor-toolbar')) return false;
-                    if (cls.contains('dropdown-menu')) return false;
 
                     return true;
                 },
             });
 
+            const url = URL.createObjectURL(blob);
+
             const link = document.createElement('a');
+            link.href = url;
             link.download = 'diagram.png';
-            link.href = dataUrl;
+            document.body.appendChild(link);
             link.click();
-        } catch (exportError) {
-            console.error('PNG export failed:', exportError);
+            link.remove();
 
-            if (isImageSecurityError(exportError)) {
-                setError(IMAGE_EXPORT_SECURITY_MESSAGE);
-                alert('Image export failed due to cross-origin assets.');
-                return;
-            }
-
-            setError('Unable to export diagram image. Please try again.');
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('PNG export failed.');
         }
-    };
+    }
 
     const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
 
