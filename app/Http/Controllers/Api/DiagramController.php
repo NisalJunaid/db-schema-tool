@@ -17,22 +17,45 @@ class DiagramController extends Controller
         $this->authorize('viewAny', Diagram::class);
 
         $user = $request->user();
-        $teamIds = $user->teams()->pluck('teams.id');
+        $teamIds = $user->teams()->pluck('teams.id')->all();
 
         $diagrams = Diagram::query()
+            ->with('owner')
             ->where(function ($query) use ($user, $teamIds) {
                 $query->where(function ($personalQuery) use ($user) {
-                    $personalQuery
-                        ->where('owner_type', 'user')
-                        ->where('owner_id', $user->getKey());
+                    $personalQuery->where('owner_type', 'user')->where('owner_id', $user->getKey());
                 })->orWhere(function ($teamQuery) use ($teamIds) {
-                    $teamQuery
-                        ->where('owner_type', 'team')
-                        ->whereIn('owner_id', $teamIds);
+                    $teamQuery->where('owner_type', 'team')->whereIn('owner_id', $teamIds);
+                })->orWhere('is_public', true)->orWhereExists(function ($accessQuery) use ($user, $teamIds) {
+                    $accessQuery->from('diagram_access')
+                        ->whereColumn('diagram_access.diagram_id', 'diagrams.id')
+                        ->where(function ($subjectQuery) use ($user, $teamIds) {
+                            $subjectQuery
+                                ->where(function ($userQuery) use ($user) {
+                                    $userQuery->where('subject_type', 'user')->where('subject_id', $user->getKey());
+                                })
+                                ->orWhere(function ($teamSubjectQuery) use ($teamIds) {
+                                    $teamSubjectQuery->where('subject_type', 'team')->whereIn('subject_id', $teamIds);
+                                });
+                        });
                 });
             })
             ->latest()
-            ->get();
+            ->get()
+            ->map(function (Diagram $diagram) {
+                $ownerName = $diagram->owner?->name;
+
+                return [
+                    'id' => $diagram->id,
+                    'name' => $diagram->name,
+                    'owner_type' => $diagram->owner_type,
+                    'owner_id' => $diagram->owner_id,
+                    'owner_name' => $ownerName,
+                    'is_public' => $diagram->is_public,
+                    'updated_at' => $diagram->updated_at,
+                ];
+            })
+            ->values();
 
         return response()->json($diagrams);
     }
@@ -61,11 +84,7 @@ class DiagramController extends Controller
             ], 422);
         }
 
-        $this->authorize('create', [
-            Diagram::class,
-            $validated['owner_type'],
-            (int) $validated['owner_id'],
-        ]);
+        $this->authorize('create', [Diagram::class, $validated['owner_type'], (int) $validated['owner_id']]);
 
         $diagram = Diagram::create($validated);
 
@@ -76,10 +95,7 @@ class DiagramController extends Controller
     {
         $this->authorize('view', $diagram);
 
-        $diagram->load([
-            'diagramTables.diagramColumns',
-            'diagramRelationships',
-        ]);
+        $diagram->load(['diagramTables.diagramColumns', 'diagramRelationships']);
 
         return response()->json($diagram);
     }

@@ -1,70 +1,75 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
-const navLinks = [
-    { label: 'Dashboard', href: '/dashboard' },
-    { label: 'Diagrams', href: '/diagrams' },
+const leftNav = [
+    { label: 'Diagrams', href: '/diagrams', icon: 'fa-diagram-project' },
+    { label: 'Team Management', href: '/teams', icon: 'fa-people-group' },
 ];
 
 export default function MainLayout({ children }) {
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [dropdownOpen, setDropdownOpen] = useState(false);
     const { url, props } = usePage();
     const authUser = props?.auth?.user;
+    const isAdmin = ['admin', 'super_admin'].includes(authUser?.role);
 
-    const submitLogout = () => {
-        router.post('/logout');
-    };
+    const submitLogout = () => router.post('/logout');
 
     return (
         <div className="min-h-screen bg-slate-100 text-slate-900">
-            <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
-                <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
-                    <Link href="/dashboard" className="text-lg font-semibold text-indigo-700">
-                        DB Schema Tool
-                    </Link>
+            <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+                <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center gap-6">
+                        <Link href="/dashboard" className="text-lg font-semibold text-indigo-700">
+                            DB Schema Tool
+                        </Link>
+                        <nav className="hidden items-center gap-1 md:flex">
+                            {leftNav.map((item) => (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className={`rounded-lg px-3 py-2 text-sm ${url.startsWith(item.href) ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-indigo-50'}`}
+                                >
+                                    <i className={`fa-solid ${item.icon} mr-2`} />
+                                    {item.label}
+                                </Link>
+                            ))}
+                        </nav>
+                    </div>
 
                     <div className="hidden items-center gap-2 md:flex">
-                        <nav className="flex items-center gap-2">
-                            {navLinks.map((item) => {
-                                const active = url.startsWith(item.href);
+                        <button
+                            type="button"
+                            onClick={() => setDropdownOpen((current) => !current)}
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        >
+                            <i className="fa-solid fa-user mr-2" />
+                            {authUser?.name}
+                            <i className="fa-solid fa-chevron-down ml-2 text-xs" />
+                        </button>
 
-                                return (
-                                    <Link
-                                        key={item.href}
-                                        href={item.href}
-                                        className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                                            active
-                                                ? 'bg-indigo-600 text-white shadow'
-                                                : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-700'
-                                        }`}
-                                    >
-                                        {item.label}
+                        {dropdownOpen && (
+                            <div className="absolute right-8 top-16 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                                <Link href="/profile" className="block rounded-md px-3 py-2 text-sm hover:bg-slate-100">
+                                    <i className="fa-solid fa-id-card mr-2" />
+                                    Profile
+                                </Link>
+                                {isAdmin && (
+                                    <Link href="/admin/users" className="block rounded-md px-3 py-2 text-sm hover:bg-slate-100">
+                                        <i className="fa-solid fa-user-shield mr-2" />
+                                        User Access
                                     </Link>
-                                );
-                            })}
-                        </nav>
-
-                        <div className="ml-3 flex items-center gap-2 border-l border-slate-200 pl-3">
-                            {authUser && <p className="text-sm font-medium text-slate-700">{authUser.name}</p>}
-
-                            {authUser ? (
+                                )}
                                 <button
                                     type="button"
                                     onClick={submitLogout}
-                                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                    className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100"
                                 >
+                                    <i className="fa-solid fa-right-from-bracket mr-2" />
                                     Logout
                                 </button>
-                            ) : (
-                                <button
-                                    type="button"
-                                    onClick={() => router.get('/login')}
-                                    className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-                                >
-                                    Login
-                                </button>
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </div>
 
                     <button
@@ -72,50 +77,30 @@ export default function MainLayout({ children }) {
                         className="rounded-lg border border-indigo-200 px-3 py-2 text-sm font-medium text-indigo-700 md:hidden"
                         onClick={() => setMobileOpen((current) => !current)}
                     >
-                        Menu
+                        <i className="fa-solid fa-bars mr-2" /> Menu
                     </button>
                 </div>
 
                 {mobileOpen && (
-                    <nav className="space-y-1 border-t border-slate-200 bg-white px-4 py-3 md:hidden">
-                        {navLinks.map((item) => {
-                            const active = url.startsWith(item.href);
-
-                            return (
-                                <Link
-                                    key={`mobile-${item.href}`}
-                                    href={item.href}
-                                    className={`block rounded-lg px-3 py-2 text-sm font-medium ${
-                                        active ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700'
-                                    }`}
-                                    onClick={() => setMobileOpen(false)}
-                                >
-                                    {item.label}
-                                </Link>
-                            );
-                        })}
-
-                        <div className="mt-2 border-t border-slate-200 pt-2">
-                            {authUser && <p className="mb-2 px-3 text-sm font-medium text-slate-700">{authUser.name}</p>}
-                            {authUser ? (
-                                <button
-                                    type="button"
-                                    onClick={submitLogout}
-                                    className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-left text-sm font-medium text-slate-700"
-                                >
-                                    Logout
-                                </button>
-                            ) : (
-                                <button
-                                    type="button"
-                                    onClick={() => router.get('/login')}
-                                    className="block w-full rounded-lg bg-indigo-600 px-3 py-2 text-left text-sm font-semibold text-white"
-                                >
-                                    Login
-                                </button>
-                            )}
-                        </div>
-                    </nav>
+                    <div className="space-y-1 border-t border-slate-200 bg-white px-4 py-3 md:hidden">
+                        {leftNav.map((item) => (
+                            <Link key={`mobile-${item.href}`} href={item.href} className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50">
+                                <i className={`fa-solid ${item.icon} mr-2`} />
+                                {item.label}
+                            </Link>
+                        ))}
+                        <Link href="/profile" className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50">
+                            <i className="fa-solid fa-id-card mr-2" />Profile
+                        </Link>
+                        {isAdmin && (
+                            <Link href="/admin/users" className="block rounded-lg px-3 py-2 text-sm hover:bg-indigo-50">
+                                <i className="fa-solid fa-user-shield mr-2" />User Access
+                            </Link>
+                        )}
+                        <button type="button" onClick={submitLogout} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50">
+                            <i className="fa-solid fa-right-from-bracket mr-2" />Logout
+                        </button>
+                    </div>
                 )}
             </header>
 

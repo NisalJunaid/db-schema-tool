@@ -22,6 +22,7 @@ class Diagram extends Model
         'name',
         'description',
         'viewport',
+        'is_public',
     ];
 
     /**
@@ -31,6 +32,7 @@ class Diagram extends Model
      */
     protected $casts = [
         'viewport' => 'array',
+        'is_public' => 'boolean',
     ];
 
     public function owner(): MorphTo
@@ -46,5 +48,10 @@ class Diagram extends Model
     public function diagramRelationships(): HasMany
     {
         return $this->hasMany(DiagramRelationship::class);
+    }
+
+    public function accessEntries(): HasMany
+    {
+        return $this->hasMany(DiagramAccess::class);
     }
 }
