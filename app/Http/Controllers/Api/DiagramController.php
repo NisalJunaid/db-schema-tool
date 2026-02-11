@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\DiagramPreviewService;
 use App\Http\Requests\UpdateDiagramRequest;
 use App\Models\Diagram;
 use App\Models\Invitation;
@@ -10,6 +11,7 @@ use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -68,7 +70,9 @@ class DiagramController extends Controller
                     'is_public' => $diagram->is_public,
                     'preview_image' => $diagram->preview_image,
                     'preview_path' => $diagram->preview_path,
-                    'preview_url' => $diagram->preview_url,
+                    'preview_url' => $diagram->preview_path
+                        ? Storage::url($diagram->preview_path)
+                        : null,
                     'is_directly_shared' => (bool) ($diagram->is_directly_shared ?? false),
                     'updated_at' => $diagram->updated_at,
                     'permissions' => $this->diagramPermissions($request, $diagram),
@@ -107,7 +111,9 @@ class DiagramController extends Controller
 
         $diagram = Diagram::create($validated);
 
-        return response()->json($diagram, 201);
+        app(DiagramPreviewService::class)->generate($diagram);
+
+        return response()->json($diagram->fresh(), 201);
     }
 
     public function show(Request $request, Diagram $diagram): JsonResponse
@@ -127,6 +133,8 @@ class DiagramController extends Controller
         $this->authorize('edit', $diagram);
 
         $diagram->update($request->validated());
+
+        app(DiagramPreviewService::class)->generate($diagram);
 
         return response()->json($diagram->fresh());
     }

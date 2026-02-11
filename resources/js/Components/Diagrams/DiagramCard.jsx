@@ -1,22 +1,17 @@
 import DiagramActionsMenu from './DiagramActionsMenu';
 
 export default function DiagramCard({ diagram, onOpen, onRename, onToggleVisibility, onInvite, onManageAccess, onDelete }) {
-    const previewSource = diagram.preview_url || diagram.preview_path || diagram.preview_image || null;
-    const previewUrl = previewSource ? new URL(previewSource, window.location.origin).toString() : null;
-    const previewVersion = diagram.preview_path || diagram.updated_at || 'initial';
-
     return (
         <div className="min-w-[280px] snap-start rounded-xl border border-slate-200 bg-white p-4 shadow-sm" onClick={onOpen}>
-            <div className="mb-3 h-36 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                {previewUrl ? (
-                    <img
-                        key={`${diagram.id}-${previewVersion}`}
-                        src={`${previewUrl}?v=${encodeURIComponent(previewVersion)}`}
-                        alt={`${diagram.name} preview`}
-                        className="w-full h-full object-cover"
+            <div className="mb-3 h-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                {diagram.preview_url ? (
+                    <iframe
+                        src={diagram.preview_url}
+                        className="w-full h-40 rounded-md border"
+                        title={`${diagram.name} preview`}
                     />
                 ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-slate-500">No preview yet</div>
+                    <div className="h-40 flex items-center justify-center text-slate-400">No preview</div>
                 )}
             </div>
             <div className="flex items-start justify-between gap-2">
