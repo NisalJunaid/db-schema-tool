@@ -572,19 +572,20 @@ function DiagramEditorContent() {
 
 
     const generatePreviewBlob = async () => {
-        const target = document.querySelector('.react-flow__viewport');
-        if (!target) return null;
+        const el = document.querySelector('.react-flow');
+        if (!el) return null;
 
         try {
-            const dataUrl = await toPng(target, {
+            const dataUrl = await toPng(el, {
                 backgroundColor: '#f8fafc',
                 cacheBust: true,
                 useCORS: true,
-                pixelRatio: 2,
+                pixelRatio: 1.5,
+                style: { transform: 'none' },
             });
 
-            const response = await fetch(dataUrl);
-            return await response.blob();
+            const res = await fetch(dataUrl);
+            return await res.blob();
         } catch (generationError) {
             console.warn('Failed to generate diagram preview image:', generationError);
             if (isImageSecurityError(generationError)) {
@@ -601,7 +602,6 @@ function DiagramEditorContent() {
             const blob = await generatePreviewBlob();
             if (!blob) return;
 
-            console.log('Uploading preview blob:', blob);
             const formData = new FormData();
             formData.append('preview', blob, 'preview.png');
 
@@ -642,10 +642,8 @@ function DiagramEditorContent() {
     };
 
     const exportImage = async () => {
-        const el = document.querySelector('.react-flow__viewport');
+        const el = document.querySelector('.react-flow');
         if (!el) return;
-
-        console.log([...document.images].map((i) => i.src));
 
         try {
             const dataUrl = await toPng(el, {
@@ -653,15 +651,16 @@ function DiagramEditorContent() {
                 cacheBust: true,
                 useCORS: true,
                 pixelRatio: 2,
+                style: { transform: 'none' },
                 filter: (node) => {
                     if (!node) return true;
 
-                    const classList = node.classList;
+                    const cls = node.classList || [];
 
-                    if (classList?.contains('react-flow__controls')) return false;
-                    if (classList?.contains('react-flow__minimap')) return false;
-                    if (classList?.contains('editor-toolbar')) return false;
-                    if (classList?.contains('diagram-preview-img')) return false;
+                    if (cls.contains('react-flow__controls')) return false;
+                    if (cls.contains('react-flow__minimap')) return false;
+                    if (cls.contains('editor-toolbar')) return false;
+                    if (cls.contains('dropdown-menu')) return false;
 
                     return true;
                 },
@@ -672,11 +671,11 @@ function DiagramEditorContent() {
             link.href = dataUrl;
             link.click();
         } catch (exportError) {
-            console.error('Export failed:', exportError);
+            console.error('PNG export failed:', exportError);
 
             if (isImageSecurityError(exportError)) {
                 setError(IMAGE_EXPORT_SECURITY_MESSAGE);
-                alert('Export failed due to cross-origin assets. Ensure no CDN fonts or external images are loaded.');
+                alert('Image export failed due to cross-origin assets.');
                 return;
             }
 

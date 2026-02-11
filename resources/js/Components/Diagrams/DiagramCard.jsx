@@ -9,7 +9,7 @@ export default function DiagramCard({ diagram, onOpen, onRename, onToggleVisibil
                     <img
                         src={`${diagram.preview_url}?v=${diagram.updated_at}`}
                         alt={`${diagram.name} preview`}
-                        className="h-full w-full object-cover"
+                        className="w-full h-full object-cover"
                     />
                 ) : (
                     <div className="flex h-full items-center justify-center text-sm text-slate-500">No preview yet</div>
