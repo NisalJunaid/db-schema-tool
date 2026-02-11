@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\DiagramAccessController;
-use App\Http\Controllers\Api\DiagramPreviewController;
 use App\Http\Controllers\Api\DiagramColumnController;
 use App\Http\Controllers\Api\DiagramController;
 use App\Http\Controllers\Api\DiagramRelationshipController;
@@ -61,7 +60,7 @@ Route::middleware('auth')->group(function () {
         Route::get('diagrams/{diagram}/export-migrations', [DiagramTransferController::class, 'exportMigrations']);
 
         Route::get('diagrams/{diagram}/access', [DiagramAccessController::class, 'index']);
-        Route::post('diagrams/{diagram}/preview', [DiagramPreviewController::class, 'store']);
+        Route::post('diagrams/{diagram}/preview', [DiagramController::class, 'uploadPreview']);
         Route::post('diagrams/{diagram}/access', [DiagramAccessController::class, 'store']);
         Route::patch('diagrams/{diagram}/access/{access}', [DiagramAccessController::class, 'update']);
         Route::delete('diagrams/{diagram}/access/{access}', [DiagramAccessController::class, 'destroy']);

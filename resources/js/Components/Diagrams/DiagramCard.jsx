@@ -5,13 +5,15 @@ export default function DiagramCard({ diagram, onOpen, onRename, onToggleVisibil
         <div className="min-w-[280px] snap-start rounded-xl border border-slate-200 bg-white p-4 shadow-sm" onClick={onOpen}>
             <div className="mb-3 h-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
                 {diagram.preview_url ? (
-                    <iframe
+                    <img
                         src={diagram.preview_url}
-                        className="w-full h-40 rounded-md border"
-                        title={`${diagram.name} preview`}
+                        alt={diagram.name}
+                        className="h-40 w-full object-cover rounded-t-lg"
                     />
                 ) : (
-                    <div className="h-40 flex items-center justify-center text-slate-400">No preview</div>
+                    <div className="h-40 flex items-center justify-center bg-slate-100 text-slate-400">
+                        No preview yet
+                    </div>
                 )}
             </div>
             <div className="flex items-start justify-between gap-2">
