@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Arr;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -23,6 +24,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role',
+        'permissions',
     ];
 
     /**
@@ -43,7 +46,25 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'permissions' => 'array',
     ];
+
+
+    public function hasAppRole(string|array $roles): bool
+    {
+        return in_array($this->role, (array) $roles, true);
+    }
+
+    public function hasAppPermission(string $permission): bool
+    {
+        if ($this->hasAppRole(['super_admin'])) {
+            return true;
+        }
+
+        $permissions = Arr::wrap($this->permissions);
+
+        return in_array($permission, $permissions, true);
+    }
 
     public function teams(): BelongsToMany
     {
