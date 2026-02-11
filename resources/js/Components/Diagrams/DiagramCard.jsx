@@ -1,18 +1,27 @@
 import DiagramActionsMenu from './DiagramActionsMenu';
 
-export default function DiagramCard({ diagram, onOpen, onRename, onDuplicate, onShare, onDelete }) {
+export default function DiagramCard({ diagram, onOpen, onRename, onToggleVisibility, onInvite, onManageAccess, onDelete }) {
     return (
-        <div className="min-w-[260px] snap-start rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="min-w-[280px] snap-start rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 h-36 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                {diagram.preview_image ? (
+                    <img src={diagram.preview_image} alt={`${diagram.name} preview`} className="h-full w-full object-cover" />
+                ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-slate-500">No preview yet</div>
+                )}
+            </div>
             <div className="flex items-start justify-between gap-2">
                 <div>
                     <h4 className="font-semibold text-slate-900">{diagram.name}</h4>
                     <p className="mt-1 text-xs text-slate-500">Updated {new Date(diagram.updated_at).toLocaleString()}</p>
                 </div>
                 <DiagramActionsMenu
+                    diagram={diagram}
                     onOpen={onOpen}
                     onRename={onRename}
-                    onDuplicate={onDuplicate}
-                    onShare={onShare}
+                    onToggleVisibility={onToggleVisibility}
+                    onInvite={onInvite}
+                    onManageAccess={onManageAccess}
                     onDelete={onDelete}
                 />
             </div>

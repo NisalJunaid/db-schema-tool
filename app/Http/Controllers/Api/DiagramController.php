@@ -4,10 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateDiagramRequest;
+use App\Mail\InvitationMail;
 use App\Models\Diagram;
+use App\Models\Invitation;
 use App\Models\Team;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
 
 class DiagramController extends Controller
@@ -19,9 +23,10 @@ class DiagramController extends Controller
         $user = $request->user();
         $teamIds = $user->teams()->pluck('teams.id')->all();
 
-        $diagrams = Diagram::query()
-            ->with('owner')
-            ->where(function ($query) use ($user, $teamIds) {
+        $query = Diagram::query()->with('owner');
+
+        if (! $user->hasAppRole(['admin', 'super_admin'])) {
+            $query->where(function ($query) use ($user, $teamIds) {
                 $query->where(function ($personalQuery) use ($user) {
                     $personalQuery->where('owner_type', 'user')->where('owner_id', $user->getKey());
                 })->orWhere(function ($teamQuery) use ($teamIds) {
@@ -39,7 +44,10 @@ class DiagramController extends Controller
                                 });
                         });
                 });
-            })
+            });
+        }
+
+        $diagrams = $query
             ->latest()
             ->get()
             ->map(function (Diagram $diagram) {
@@ -52,6 +60,7 @@ class DiagramController extends Controller
                     'owner_id' => $diagram->owner_id,
                     'owner_name' => $ownerName,
                     'is_public' => $diagram->is_public,
+                    'preview_image' => $diagram->preview_image,
                     'updated_at' => $diagram->updated_at,
                 ];
             })
@@ -116,5 +125,38 @@ class DiagramController extends Controller
         $diagram->delete();
 
         return response()->noContent();
+    }
+
+    public function invite(Request $request, Diagram $diagram): JsonResponse
+    {
+        $this->authorize('manageAccess', $diagram);
+
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'role' => ['required', Rule::in(['viewer', 'editor', 'admin'])],
+            'invite_scope' => ['nullable', Rule::in(['diagram', 'team'])],
+        ]);
+
+        $scope = $validated['invite_scope'] ?? 'diagram';
+
+        $invitation = Invitation::create([
+            'email' => strtolower($validated['email']),
+            'inviter_user_id' => $request->user()->id,
+            'type' => $scope === 'team' && $diagram->owner_type === 'team' ? 'team' : 'diagram',
+            'team_id' => $diagram->owner_type === 'team' ? $diagram->owner_id : null,
+            'diagram_id' => $scope === 'diagram' || $diagram->owner_type !== 'team' ? $diagram->id : null,
+            'role' => $validated['role'],
+        ]);
+
+        $invitation->load(['inviter:id,name,email', 'team:id,name', 'diagram:id,name']);
+        Mail::to($invitation->email)->send(new InvitationMail($invitation));
+
+        $existingUser = User::query()->where('email', strtolower($validated['email']))->exists();
+
+        return response()->json([
+            'message' => 'Invitation sent successfully.',
+            'registered_user' => $existingUser,
+            'invitation' => $invitation,
+        ], 201);
     }
 }

@@ -23,6 +23,7 @@ class Diagram extends Model
         'description',
         'viewport',
         'is_public',
+        'preview_image',
     ];
 
     /**

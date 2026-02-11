@@ -24,17 +24,22 @@ export default function TeamsIndex() {
                     <h1 className="text-xl font-semibold">Team Management</h1>
                     <button type="button" onClick={() => setShowModal(true)} className="rounded bg-indigo-600 px-3 py-2 text-sm text-white">Create Team</button>
                 </div>
-                <div className="mt-4 space-y-2">
-                    {teams.map((team) => (
-                        <div key={team.id} className="flex items-center justify-between rounded border p-3">
-                            <div>
-                                <p className="font-medium">{team.name}</p>
-                                <p className="text-xs text-slate-500">Role: {team.role}</p>
+
+                {teams.length === 0 ? (
+                    <div className="mt-8 rounded-lg border border-dashed p-8 text-center">
+                        <p className="text-sm text-slate-600">You do not belong to any teams yet.</p>
+                        <button type="button" onClick={() => setShowModal(true)} className="mt-3 rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Create Your First Team</button>
+                    </div>
+                ) : (
+                    <div className="mt-4 space-y-2">
+                        {teams.map((team) => (
+                            <div key={team.id} className="flex items-center justify-between rounded border p-3">
+                                <div><p className="font-medium">{team.name}</p></div>
+                                <Link href={`/teams/${team.id}`} className="rounded border px-3 py-1.5 text-sm">Open</Link>
                             </div>
-                            <Link href={`/teams/${team.id}`} className="rounded border px-3 py-1.5 text-sm">Open</Link>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {showModal && (

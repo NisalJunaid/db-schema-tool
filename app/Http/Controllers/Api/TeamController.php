@@ -3,18 +3,28 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\InvitationMail;
+use App\Models\Invitation;
 use App\Models\Team;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
 
 class TeamController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $teams = $request->user()
-            ->teams()
+        $this->authorize('viewAny', Team::class);
+
+        $teamsQuery = $request->user()->hasAppRole(['admin', 'super_admin'])
+            ? Team::query()
+            : $request->user()->teams();
+
+        $teams = $teamsQuery
             ->with('owner:id,name,email')
-            ->select('teams.id', 'teams.name', 'teams.owner_user_id', 'team_user.role')
+            ->select('teams.id', 'teams.name', 'teams.owner_user_id')
             ->orderBy('teams.name')
             ->get();
 
@@ -39,25 +49,69 @@ class TeamController extends Controller
 
     public function show(Request $request, Team $team): JsonResponse
     {
-        abort_unless($request->user()->teams()->whereKey($team->getKey())->exists(), 403);
+        $this->authorize('view', $team);
 
-        $team->load(['owner:id,name,email', 'users:id,name,email']);
+        $team->load(['owner:id,name,email', 'users:id,name,email', 'diagrams:id,name,owner_id,owner_type']);
 
-        $members = $team->users->map(function ($member) {
-            return [
-                'id' => $member->id,
-                'name' => $member->name,
-                'email' => $member->email,
-                'role' => $member->pivot?->role,
-            ];
-        })->values();
+        $members = $team->users->map(fn ($member) => [
+            'id' => $member->id,
+            'name' => $member->name,
+            'email' => $member->email,
+            'role' => $member->pivot?->role,
+        ])->values();
 
         return response()->json([
             'id' => $team->id,
             'name' => $team->name,
             'owner' => $team->owner,
             'members' => $members,
-            'can_manage' => $request->user()->hasTeamRole($team, ['admin', 'owner']),
+            'diagrams' => $team->diagrams,
+            'can_manage' => $request->user()->can('manage', $team),
         ]);
+    }
+
+    public function invite(Request $request, Team $team): JsonResponse
+    {
+        $this->authorize('manage', $team);
+
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'role' => ['required', Rule::in(['member', 'editor', 'admin'])],
+            'diagram_ids' => ['nullable', 'array'],
+            'diagram_ids.*' => [
+                'integer',
+                Rule::exists('diagrams', 'id')->where(fn ($query) => $query->where('owner_type', 'team')->where('owner_id', $team->id)),
+            ],
+        ]);
+
+        $invitation = Invitation::create([
+            'email' => strtolower($validated['email']),
+            'inviter_user_id' => $request->user()->id,
+            'type' => 'team',
+            'team_id' => $team->id,
+            'role' => $validated['role'],
+        ]);
+
+        foreach (($validated['diagram_ids'] ?? []) as $diagramId) {
+            Invitation::create([
+                'email' => strtolower($validated['email']),
+                'inviter_user_id' => $request->user()->id,
+                'type' => 'diagram',
+                'team_id' => $team->id,
+                'diagram_id' => (int) $diagramId,
+                'role' => $validated['role'] === 'member' ? 'viewer' : $validated['role'],
+            ]);
+        }
+
+        $invitation->load(['inviter:id,name,email', 'team:id,name']);
+        Mail::to($invitation->email)->send(new InvitationMail($invitation));
+
+        $existingUser = User::query()->where('email', strtolower($validated['email']))->exists();
+
+        return response()->json([
+            'message' => 'Invitation sent successfully.',
+            'registered_user' => $existingUser,
+            'invitation' => $invitation,
+        ], 201);
     }
 }

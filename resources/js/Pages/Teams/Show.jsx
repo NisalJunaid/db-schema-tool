@@ -1,12 +1,13 @@
 import { Head, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import InviteModal from '@/Components/Diagrams/InviteModal';
 
 export default function TeamShow() {
     const { props } = usePage();
     const teamId = props?.teamId;
     const [team, setTeam] = useState(null);
-    const [invite, setInvite] = useState({ email: '', role: 'viewer' });
+    const [showInvite, setShowInvite] = useState(false);
 
     const loadTeam = async () => {
         const data = await api.get(`/api/v1/teams/${teamId}`);
@@ -21,30 +22,15 @@ export default function TeamShow() {
         <>
             <Head title="Team" />
             <div className="rounded-xl border bg-white p-6">
-                <h1 className="text-xl font-semibold">{team?.name}</h1>
-                <p className="text-sm text-slate-600">Owner: {team?.owner?.name}</p>
-
-                {team?.can_manage && (
-                    <div className="mt-4 grid grid-cols-3 gap-2">
-                        <input value={invite.email} onChange={(e) => setInvite((v) => ({ ...v, email: e.target.value }))} className="rounded border px-3 py-2" placeholder="member@email.com" />
-                        <select value={invite.role} onChange={(e) => setInvite((v) => ({ ...v, role: e.target.value }))} className="rounded border px-3 py-2">
-                            <option value="viewer">viewer</option>
-                            <option value="editor">editor</option>
-                            <option value="admin">admin</option>
-                        </select>
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                await api.post(`/api/v1/teams/${teamId}/members`, invite);
-                                setInvite({ email: '', role: 'viewer' });
-                                loadTeam();
-                            }}
-                            className="rounded bg-indigo-600 px-3 py-2 text-white"
-                        >
-                            Add member
-                        </button>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-xl font-semibold">{team?.name}</h1>
+                        <p className="text-sm text-slate-600">Owner: {team?.owner?.name}</p>
                     </div>
-                )}
+                    {team?.can_manage && (
+                        <button type="button" onClick={() => setShowInvite(true)} className="rounded bg-indigo-600 px-3 py-2 text-sm text-white">Invite Member</button>
+                    )}
+                </div>
 
                 <table className="mt-6 w-full text-sm">
                     <thead>
@@ -67,7 +53,7 @@ export default function TeamShow() {
                                         }}
                                         className="rounded border px-2 py-1"
                                     >
-                                        <option value="viewer">viewer</option>
+                                        <option value="member">member</option>
                                         <option value="editor">editor</option>
                                         <option value="admin">admin</option>
                                     </select>
@@ -82,6 +68,22 @@ export default function TeamShow() {
                     </tbody>
                 </table>
             </div>
+
+            <InviteModal
+                open={showInvite}
+                onClose={() => setShowInvite(false)}
+                title="Invite Team Member"
+                roleOptions={['member', 'editor', 'admin']}
+                diagrams={team?.diagrams ?? []}
+                includeDiagramSelect
+                onSubmit={async (payload) => {
+                    await api.post(`/api/v1/teams/${teamId}/invite`, {
+                        email: payload.email,
+                        role: payload.role,
+                        diagram_ids: payload.diagram_ids,
+                    });
+                }}
+            />
         </>
     );
 }
