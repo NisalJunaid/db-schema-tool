@@ -7,12 +7,12 @@ use App\Mail\InvitationMail;
 use App\Models\Diagram;
 use App\Models\DiagramAccess;
 use App\Models\Invitation;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 
 class InvitationController extends Controller
 {
@@ -99,7 +99,7 @@ class InvitationController extends Controller
             'ok' => $accepted,
             'message' => $message,
             'invitation' => $invitation->fresh(),
-            'diagram' => $accepted ? $this->resolveDiagramPayload($invitation) : null,
+            'diagram' => $accepted ? $this->resolveDiagramPayload($request->user(), $invitation) : null,
         ], $accepted ? 200 : 422);
     }
 
@@ -154,14 +154,13 @@ class InvitationController extends Controller
         ]);
     }
 
-
-    private function resolveDiagramPayload(Invitation $invitation): ?array
+    private function resolveDiagramPayload(User $user, Invitation $invitation): ?array
     {
         if (! $invitation->diagram_id) {
             return null;
         }
 
-        $diagram = Diagram::query()->find($invitation->diagram_id);
+        $diagram = Diagram::query()->with('owner')->find($invitation->diagram_id);
 
         if (! $diagram) {
             return null;
@@ -172,11 +171,22 @@ class InvitationController extends Controller
             'name' => $diagram->name,
             'owner_type' => $diagram->owner_type,
             'owner_id' => $diagram->owner_id,
+            'owner_name' => $diagram->owner?->name,
             'is_public' => $diagram->is_public,
             'preview_image' => $diagram->preview_image,
             'preview_path' => $diagram->preview_path,
-            'preview_url' => $diagram->preview_path ? Storage::url($diagram->preview_path) : null,
+            'preview_url' => $diagram->preview_url,
+            'is_directly_shared' => $diagram->accessEntries()
+                ->where('subject_type', 'user')
+                ->where('subject_id', $user->getKey())
+                ->exists(),
             'updated_at' => $diagram->updated_at,
+            'permissions' => [
+                'canView' => $user->can('view', $diagram),
+                'canEdit' => $user->can('edit', $diagram),
+                'canManageAccess' => $user->can('manageAccess', $diagram),
+                'canDelete' => $user->can('delete', $diagram),
+            ],
         ];
     }
 
@@ -234,9 +244,7 @@ class InvitationController extends Controller
         }
 
         if ($invitation->type === 'team' && $invitation->team_id) {
-            $invitation->team()->first()?->users()->syncWithoutDetaching([
-                $user->id => ['role' => $invitation->role],
-            ]);
+            self::syncTeamMembershipRole($user, $invitation->team()->first(), $invitation->role);
         }
 
         if ($invitation->diagram_id) {
@@ -246,12 +254,52 @@ class InvitationController extends Controller
                     'subject_type' => 'user',
                     'subject_id' => $user->id,
                 ],
-                ['role' => $invitation->role === 'member' ? 'viewer' : $invitation->role],
+                ['role' => self::normalizeInvitationRole($invitation->role)],
             );
         }
 
         $invitation->update(['status' => 'accepted']);
 
         return [true, 'Invitation accepted successfully.'];
+    }
+
+    private static function syncTeamMembershipRole(User $user, ?Team $team, string $invitedRole): void
+    {
+        if (! $team || $user->isTeamOwner($team)) {
+            return;
+        }
+
+        $normalizedInvitedRole = self::normalizeInvitationRole($invitedRole);
+        $member = $team->users()->whereKey($user->getKey())->first();
+
+        if (! $member) {
+            $team->users()->attach($user->getKey(), ['role' => $normalizedInvitedRole]);
+
+            return;
+        }
+
+        $currentRole = self::normalizeInvitationRole((string) ($member->pivot?->role ?? 'viewer'));
+
+        if (self::roleRank($normalizedInvitedRole) > self::roleRank($currentRole)) {
+            $team->users()->updateExistingPivot($user->getKey(), ['role' => $normalizedInvitedRole]);
+        }
+    }
+
+    private static function normalizeInvitationRole(?string $role): string
+    {
+        return match (strtolower((string) $role)) {
+            'admin' => 'admin',
+            'editor' => 'editor',
+            default => 'viewer',
+        };
+    }
+
+    private static function roleRank(string $role): int
+    {
+        return match (self::normalizeInvitationRole($role)) {
+            'admin' => 3,
+            'editor' => 2,
+            default => 1,
+        };
     }
 }

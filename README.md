@@ -64,3 +64,14 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Diagram preview setup
+
+Preview thumbnails are stored on Laravel's `public` disk and served from `/storage`.
+After installing or deploying, run:
+
+```bash
+php artisan storage:link
+```
+
+If this symlink is missing, diagram cards may keep showing "No preview yet" even when preview uploads succeed.

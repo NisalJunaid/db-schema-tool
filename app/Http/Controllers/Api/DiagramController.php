@@ -23,7 +23,14 @@ class DiagramController extends Controller
         $user = $request->user();
         $teamIds = $user->teams()->pluck('teams.id')->all();
 
-        $query = Diagram::query()->with('owner');
+        $query = Diagram::query()->with('owner')
+            ->withExists([
+                'accessEntries as is_directly_shared' => function ($accessQuery) use ($user) {
+                    $accessQuery
+                        ->where('subject_type', 'user')
+                        ->where('subject_id', $user->getKey());
+                },
+            ]);
 
         if (! $user->hasAppRole(['admin', 'super_admin'])) {
             $query->where(function ($query) use ($user, $teamIds) {
@@ -63,6 +70,7 @@ class DiagramController extends Controller
                     'preview_image' => $diagram->preview_image,
                     'preview_path' => $diagram->preview_path ? Storage::url($diagram->preview_path) : null,
                     'preview_url' => $diagram->preview_url,
+                    'is_directly_shared' => (bool) ($diagram->is_directly_shared ?? false),
                     'updated_at' => $diagram->updated_at,
                     'permissions' => $this->diagramPermissions($request, $diagram),
                 ];
@@ -239,6 +247,7 @@ class DiagramController extends Controller
         $user = $request->user();
 
         return [
+            'canView' => $user->can('view', $diagram),
             'canEdit' => $user->can('edit', $diagram),
             'canManageAccess' => $user->can('manageAccess', $diagram),
             'canDelete' => $user->can('delete', $diagram),

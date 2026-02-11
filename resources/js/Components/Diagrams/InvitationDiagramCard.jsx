@@ -1,6 +1,5 @@
 const roleLabel = {
     viewer: 'Viewer',
-    member: 'Member',
     editor: 'Editor',
     admin: 'Admin',
 };

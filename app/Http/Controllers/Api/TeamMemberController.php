@@ -17,7 +17,7 @@ class TeamMemberController extends Controller
 
         $validated = $request->validate([
             'email' => ['required', 'email'],
-            'role' => ['required', Rule::in(['member', 'editor', 'admin'])],
+            'role' => ['required', Rule::in(['viewer', 'editor', 'admin'])],
         ]);
 
         $user = User::query()->where('email', $validated['email'])->first();
@@ -39,7 +39,7 @@ class TeamMemberController extends Controller
         $this->authorize('manageTeam', $team);
 
         $validated = $request->validate([
-            'role' => ['required', Rule::in(['member', 'editor', 'admin'])],
+            'role' => ['required', Rule::in(['viewer', 'editor', 'admin'])],
         ]);
 
         $team->users()->updateExistingPivot($user->id, ['role' => $validated['role']]);
