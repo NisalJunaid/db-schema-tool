@@ -1,4 +1,5 @@
 import { Link } from '@inertiajs/react';
+import AppLogo from '@/Components/AppLogo';
 
 const baseButtonClass = 'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
 
@@ -36,11 +37,12 @@ export default function Toolbar({
     return (
         <div className="sticky top-0 z-30 flex items-center border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
             <div className="flex items-center gap-x-4">
-                <div className="flex items-center gap-x-2">
+                <div className="flex items-center gap-3">
                     <Link href="/diagrams" title="Back to diagrams" className={baseButtonClass}>
                         <i className="fa-solid fa-arrow-left text-sm" aria-hidden="true" />
                         <span className="sr-only">Back to diagrams</span>
                     </Link>
+                    <AppLogo className="h-8 w-auto" />
                 </div>
 
                 <div className="flex items-center gap-x-2">
