@@ -1,13 +1,18 @@
 import DiagramActionsMenu from './DiagramActionsMenu';
 
 export default function DiagramCard({ diagram, onOpen, onRename, onToggleVisibility, onInvite, onManageAccess, onDelete }) {
+    const previewUrl = diagram.preview_url
+        ? new URL(diagram.preview_url, window.location.origin).toString()
+        : null;
+    const previewVersion = diagram.preview_path || diagram.updated_at || 'initial';
 
     return (
         <div className="min-w-[280px] snap-start rounded-xl border border-slate-200 bg-white p-4 shadow-sm" onClick={onOpen}>
             <div className="mb-3 h-36 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                {diagram.preview_url ? (
+                {previewUrl ? (
                     <img
-                        src={`${diagram.preview_url}?v=${diagram.updated_at}`}
+                        key={`${diagram.id}-${previewVersion}`}
+                        src={`${previewUrl}?v=${encodeURIComponent(previewVersion)}`}
                         alt={`${diagram.name} preview`}
                         className="w-full h-full object-cover"
                     />

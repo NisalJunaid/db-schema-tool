@@ -10,7 +10,6 @@ use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -68,7 +67,7 @@ class DiagramController extends Controller
                     'owner_name' => $ownerName,
                     'is_public' => $diagram->is_public,
                     'preview_image' => $diagram->preview_image,
-                    'preview_path' => $diagram->preview_path ? Storage::url($diagram->preview_path) : null,
+                    'preview_path' => $diagram->preview_path,
                     'preview_url' => $diagram->preview_url,
                     'is_directly_shared' => (bool) ($diagram->is_directly_shared ?? false),
                     'updated_at' => $diagram->updated_at,

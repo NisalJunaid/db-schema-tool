@@ -1,7 +1,7 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toBlob } from 'html-to-image';
-import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges } from 'reactflow';
+import { toBlob, toPng } from 'html-to-image';
+import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges, getRectOfNodes, getViewportForBounds } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
 import Sidebar from '@/Components/Diagram/Sidebar';
@@ -22,6 +22,7 @@ const defaultColumnForm = { tableId: '', preset: '', name: '', type: 'VARCHAR(25
 const diagramColorPalette = ['#6366f1', '#0ea5e9', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e'];
 const IMAGE_EXPORT_SECURITY_MESSAGE = "Image export blocked by browser security (cross-origin assets). If you're using CDN fonts/icons, bundle them locally.";
 const isImageSecurityError = (error) => error?.name === 'SecurityError' || /tainted canvases|cross-origin/i.test(error?.message ?? '');
+const EXCLUDED_CAPTURE_CLASSES = new Set(['react-flow__controls', 'react-flow__minimap']);
 
 const normalizeTable = (rawTable) => ({ ...rawTable, columns: asCollection(rawTable.columns ?? rawTable.diagram_columns, 'diagram_columns') });
 const cloneState = (value) => JSON.parse(JSON.stringify(value));
@@ -526,6 +527,7 @@ function DiagramEditorContent() {
             setShowAddTableModal(false);
             setAddTableForm({ name: '', schema: '' });
             setSavingState('Autosaved');
+            schedulePreviewUpload();
         } catch (submitError) {
             setSavingState('Error');
             const validationErrors = submitError?.payload?.errors ?? {};
@@ -571,18 +573,58 @@ function DiagramEditorContent() {
     const handleImport = async (payload) => { setSavingState('Saving...'); await api.post(`/api/v1/diagrams/${diagramId}/import`, payload); await loadDiagram(); setSavingState('Saved'); };
 
 
-    const generatePreviewBlob = async () => {
-        const el = document.querySelector('.react-flow');
-        if (!el) return null;
+    const resolveDiagramCaptureElements = () => {
+        const flowRoot = document.querySelector('.react-flow');
+        const viewportElement = flowRoot?.querySelector('.react-flow__viewport');
+        const instance = reactFlowRef.current;
+
+        if (!flowRoot || !viewportElement || !instance) {
+            return null;
+        }
+
+        return {
+            viewportElement,
+            width: Math.max(1, Math.round(flowRoot.clientWidth || 1)),
+            height: Math.max(1, Math.round(flowRoot.clientHeight || 1)),
+            instance,
+        };
+    };
+
+    const captureDiagramBlob = async ({ pixelRatio = 2 } = {}) => {
+        const captureTarget = resolveDiagramCaptureElements();
+        if (!captureTarget) return null;
+
+        const { viewportElement, width, height, instance } = captureTarget;
+        const nodesForBounds = instance.getNodes?.() ?? [];
+        const safeNodes = nodesForBounds.filter((node) => Number.isFinite(node?.position?.x) && Number.isFinite(node?.position?.y));
+        if (!safeNodes.length) return null;
+
+        const originalViewport = instance.getViewport?.() ?? { x: 0, y: 0, zoom: 1 };
 
         try {
-            const blob = await toBlob(el, {
+            const bounds = getRectOfNodes(safeNodes);
+            const targetViewport = getViewportForBounds(bounds, width, height, 0.2, 2);
+            await instance.setViewport?.(targetViewport, { duration: 0 });
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+
+            return await toBlob(viewportElement, {
                 backgroundColor: '#f8fafc',
                 cacheBust: true,
-                pixelRatio: 1.5,
-                style: { transform: 'none' },
+                pixelRatio,
+                useCORS: true,
+                filter: (node) => {
+                    if (!node?.classList) return true;
+                    return !Array.from(node.classList).some((className) => EXCLUDED_CAPTURE_CLASSES.has(className));
+                },
             });
-            return blob;
+        } finally {
+            await instance.setViewport?.(originalViewport, { duration: 0 });
+        }
+    };
+
+    const generatePreviewBlob = async () => {
+        try {
+            return await captureDiagramBlob({ pixelRatio: 2 });
         } catch (generationError) {
             console.warn('Failed to generate diagram preview image:', generationError);
             if (isImageSecurityError(generationError)) {
@@ -602,7 +644,9 @@ function DiagramEditorContent() {
             const formData = new FormData();
             formData.append('preview', blob, 'preview.png');
 
-            const response = await api.post(`/api/v1/diagrams/${diagramId}/preview`, formData);
+            const response = await api.post(`/api/v1/diagrams/${diagramId}/preview`, formData, {
+                headers: { Accept: 'application/json' },
+            });
             const payload = response?.data ?? response;
 
             if (payload?.preview_url || payload?.preview_path) {
@@ -639,50 +683,56 @@ function DiagramEditorContent() {
     };
 
     async function exportImage() {
-        const viewport = document.querySelector('.react-flow__viewport');
-        if (!viewport) {
+        const captureTarget = resolveDiagramCaptureElements();
+        if (!captureTarget) {
             alert('Diagram not found');
             return;
         }
 
+        const { viewportElement, width, height, instance } = captureTarget;
+        const nodesForBounds = instance.getNodes?.() ?? [];
+        const safeNodes = nodesForBounds.filter((node) => Number.isFinite(node?.position?.x) && Number.isFinite(node?.position?.y));
+
+        if (!safeNodes.length) {
+            alert('Add at least one table before exporting.');
+            return;
+        }
+
+        const originalViewport = instance.getViewport?.() ?? { x: 0, y: 0, zoom: 1 };
+
         try {
-            const clone = viewport.cloneNode(true);
-            clone.style.transform = 'translate(0px, 0px) scale(1)';
-            clone.style.background = '#f8fafc';
+            const bounds = getRectOfNodes(safeNodes);
+            const targetViewport = getViewportForBounds(bounds, width, height, 0.2, 2);
+            await instance.setViewport?.(targetViewport, { duration: 0 });
+            await new Promise((resolve) => requestAnimationFrame(resolve));
 
-            const wrapper = document.createElement('div');
-            wrapper.style.padding = '40px';
-            wrapper.style.background = '#f8fafc';
-            wrapper.appendChild(clone);
-
-            document.body.appendChild(wrapper);
-
-            const blob = await toBlob(wrapper, {
+            const dataUrl = await toPng(viewportElement, {
                 backgroundColor: '#f8fafc',
                 pixelRatio: 2,
                 cacheBust: true,
+                useCORS: true,
+                filter: (node) => {
+                    if (!node?.classList) return true;
+                    return !Array.from(node.classList).some((className) => EXCLUDED_CAPTURE_CLASSES.has(className));
+                },
             });
 
-            document.body.removeChild(wrapper);
-
-            if (!blob) {
-                alert('Failed to export image.');
-                return;
-            }
-
-            const url = URL.createObjectURL(blob);
-
             const link = document.createElement('a');
-            link.href = url;
+            link.href = dataUrl;
             link.download = 'diagram.png';
             document.body.appendChild(link);
             link.click();
             link.remove();
-
-            URL.revokeObjectURL(url);
         } catch (error) {
             console.error('PNG export failed:', error);
+            if (isImageSecurityError(error)) {
+                setError(IMAGE_EXPORT_SECURITY_MESSAGE);
+                alert(IMAGE_EXPORT_SECURITY_MESSAGE);
+                return;
+            }
             alert('PNG export failed.');
+        } finally {
+            await instance.setViewport?.(originalViewport, { duration: 0 });
         }
     }
 
