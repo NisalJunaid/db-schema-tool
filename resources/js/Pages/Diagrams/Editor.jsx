@@ -577,13 +577,10 @@ function DiagramEditorContent() {
 
         try {
             return await toPng(target, {
-                pixelRatio: 1,
                 backgroundColor: '#f8fafc',
                 cacheBust: true,
-                filter: (node) => {
-                    if (!(node instanceof Element)) return true;
-                    return !node.closest('.react-flow__controls, .react-flow__minimap, [role="menu"], .dropdown-menu, .popover, [data-html-to-image-ignore="true"]');
-                },
+                useCORS: true,
+                pixelRatio: 2,
             });
         } catch (generationError) {
             console.warn('Failed to generate diagram preview image:', generationError);
@@ -595,17 +592,13 @@ function DiagramEditorContent() {
         }
     };
 
-    const dataUrlToBlob = async (dataUrl) => {
-        const response = await fetch(dataUrl);
-        return response.blob();
-    };
 
     async function uploadDiagramPreview() {
         try {
             const pngDataUrl = await generatePreviewDataUrl();
             if (!pngDataUrl) return;
 
-            const blob = await dataUrlToBlob(pngDataUrl);
+            const blob = await (await fetch(pngDataUrl)).blob();
             const formData = new FormData();
             formData.append('preview', blob, 'preview.png');
 
@@ -646,29 +639,44 @@ function DiagramEditorContent() {
     };
 
     const exportImage = async () => {
-        const target = document.querySelector('.react-flow__viewport');
-        if (!target) return;
+        const el = document.querySelector('.react-flow__viewport');
+        if (!el) return;
+
+        console.log([...document.images].map((i) => i.src));
+
         try {
-            // Regression check: Export Image should download diagram.png without taint errors.
-            const pngDataUrl = await toPng(target, {
-                pixelRatio: 2,
+            const dataUrl = await toPng(el, {
                 backgroundColor: '#f8fafc',
                 cacheBust: true,
+                useCORS: true,
+                pixelRatio: 2,
                 filter: (node) => {
-                    if (!(node instanceof Element)) return true;
-                    return !node.closest('.react-flow__controls, .react-flow__minimap, [role="menu"], .dropdown-menu, .popover, [data-html-to-image-ignore="true"]');
+                    if (!node) return true;
+
+                    const classList = node.classList;
+
+                    if (classList?.contains('react-flow__controls')) return false;
+                    if (classList?.contains('react-flow__minimap')) return false;
+                    if (classList?.contains('editor-toolbar')) return false;
+                    if (classList?.contains('diagram-preview-img')) return false;
+
+                    return true;
                 },
             });
 
             const link = document.createElement('a');
             link.download = 'diagram.png';
-            link.href = pngDataUrl;
+            link.href = dataUrl;
             link.click();
         } catch (exportError) {
+            console.error('Export failed:', exportError);
+
             if (isImageSecurityError(exportError)) {
                 setError(IMAGE_EXPORT_SECURITY_MESSAGE);
+                alert('Export failed due to cross-origin assets. Ensure no CDN fonts or external images are loaded.');
                 return;
             }
+
             setError('Unable to export diagram image. Please try again.');
         }
     };
