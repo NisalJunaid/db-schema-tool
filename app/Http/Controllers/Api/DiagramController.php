@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\DiagramPreviewService;
 use App\Http\Requests\UpdateDiagramRequest;
 use App\Models\Diagram;
 use App\Models\Invitation;
@@ -11,7 +10,6 @@ use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -71,7 +69,7 @@ class DiagramController extends Controller
                     'preview_image' => $diagram->preview_image,
                     'preview_path' => $diagram->preview_path,
                     'preview_url' => $diagram->preview_path
-                        ? Storage::url($diagram->preview_path)
+                        ? asset('storage/' . $diagram->preview_path)
                         : null,
                     'is_directly_shared' => (bool) ($diagram->is_directly_shared ?? false),
                     'updated_at' => $diagram->updated_at,
@@ -111,8 +109,6 @@ class DiagramController extends Controller
 
         $diagram = Diagram::create($validated);
 
-        app(DiagramPreviewService::class)->generate($diagram);
-
         return response()->json($diagram->fresh(), 201);
     }
 
@@ -134,9 +130,26 @@ class DiagramController extends Controller
 
         $diagram->update($request->validated());
 
-        app(DiagramPreviewService::class)->generate($diagram);
-
         return response()->json($diagram->fresh());
+    }
+
+    public function uploadPreview(Request $request, Diagram $diagram): JsonResponse
+    {
+        $this->authorize('update', $diagram);
+
+        $request->validate([
+            'preview' => 'required|image|max:5120',
+        ]);
+
+        $path = $request->file('preview')->store('diagram-previews', 'public');
+
+        $diagram->preview_path = $path;
+        $diagram->save();
+
+        return response()->json([
+            'preview_url' => asset('storage/' . $path),
+            'preview_path' => $path,
+        ]);
     }
 
     public function destroy(Diagram $diagram): JsonResponse

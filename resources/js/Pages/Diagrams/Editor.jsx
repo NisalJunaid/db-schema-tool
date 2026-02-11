@@ -1,6 +1,6 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toPng } from 'html-to-image';
+import { toBlob, toPng } from 'html-to-image';
 import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges, getRectOfNodes, getViewportForBounds } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
@@ -52,6 +52,7 @@ function DiagramEditorContent() {
     const reactFlowRef = useRef(null);
     const viewportSaveTimerRef = useRef(null);
     const editModeNoticeTimerRef = useRef(null);
+    const previewUploadTimerRef = useRef(null);
 
     const [diagram, setDiagram] = useState(null);
     const [tables, setTables] = useState([]);
@@ -212,7 +213,63 @@ function DiagramEditorContent() {
     useEffect(() => () => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
         if (editModeNoticeTimerRef.current) clearTimeout(editModeNoticeTimerRef.current);
+        if (previewUploadTimerRef.current) clearTimeout(previewUploadTimerRef.current);
     }, []);
+
+    async function uploadDiagramPreview() {
+        const instance = reactFlowRef.current;
+        if (!instance) return;
+
+        instance.fitView({ padding: 0.2 });
+
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        const el = document.querySelector('.react-flow');
+        if (!el) return;
+
+        const blob = await toBlob(el, {
+            backgroundColor: '#f8fafc',
+            pixelRatio: 2,
+            useCORS: true,
+            cacheBust: true,
+            filter: (node) => {
+                if (!node.classList) return true;
+
+                return !node.classList.contains('react-flow__controls')
+                    && !node.classList.contains('react-flow__minimap')
+                    && !node.classList.contains('editor-toolbar');
+            },
+        });
+
+        if (!blob) return;
+
+        const formData = new FormData();
+        formData.append('preview', blob, 'preview.png');
+
+        const response = await api.post(
+            `/api/v1/diagrams/${diagramId}/preview`,
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' } },
+        );
+
+        const payload = response?.data ?? response;
+
+        setDiagram((prev) => ({
+            ...prev,
+            preview_url: payload.preview_url,
+            preview_path: payload.preview_path,
+        }));
+    }
+
+    const schedulePreviewUpload = useCallback(() => {
+        if (previewUploadTimerRef.current) {
+            clearTimeout(previewUploadTimerRef.current);
+        }
+
+        previewUploadTimerRef.current = setTimeout(() => {
+            uploadDiagramPreview().catch(() => {});
+        }, 500);
+    }, [diagramId]);
 
     const onRenameTable = useCallback(async (tableId, name) => {
         if (!canEdit || !editMode) return;
@@ -222,6 +279,7 @@ function DiagramEditorContent() {
         try {
             setSavingState('Saving...');
             await api.patch(`/api/v1/diagram-tables/${tableId}`, { name });
+            schedulePreviewUpload();
             setSavingState('Autosaved');
         } catch (renameError) {
             setTables(previousTables);
@@ -230,7 +288,7 @@ function DiagramEditorContent() {
             if (renameError?.status === 401) return handle401();
             setError(renameError.message || 'Failed to rename table.');
         }
-    }, [buildSnapshot, canEdit, commitEditorState, editMode, handle401, relationships, tables]);
+    }, [buildSnapshot, canEdit, commitEditorState, editMode, handle401, relationships, schedulePreviewUpload, tables]);
 
     const onUpdateTableColor = useCallback(async (tableId, color) => {
         if (!canEdit || !editMode) return;
@@ -240,13 +298,14 @@ function DiagramEditorContent() {
         try {
             setSavingState('Saving...');
             await api.patch(`/api/v1/diagram-tables/${tableId}`, { color });
+            schedulePreviewUpload();
             setSavingState('Autosaved');
         } catch (updateError) {
             setTables(previousTables);
             setSavingState('Error');
             setError(updateError.message || 'Failed to update table color.');
         }
-    }, [canEdit, commitEditorState, editMode, relationships, tables]);
+    }, [canEdit, commitEditorState, editMode, relationships, schedulePreviewUpload, tables]);
 
     const onAddColumn = useCallback((tableId) => { setFormErrors({}); setColumnModalMode('create'); setEditingColumn(null); setAddColumnForm({ ...defaultColumnForm, tableId: String(tableId) }); setShowAddColumnModal(true); }, []);
     const onEditColumn = useCallback((column) => { setFormErrors({}); setColumnModalMode('edit'); setEditingColumn(column); setAddColumnForm({ ...defaultColumnForm, tableId: String(column.diagram_table_id), name: column.name, type: column.type, nullable: Boolean(column.nullable), primary: Boolean(column.primary), unique: Boolean(column.unique), default: column.default ?? '' }); setShowAddColumnModal(true); }, []);
@@ -369,13 +428,14 @@ function DiagramEditorContent() {
         try {
             setSavingState('Saving...');
             await api.delete(`/api/v1/diagram-relationships/${selectedEdgeId}`);
+            schedulePreviewUpload();
             setSavingState('Autosaved');
         } catch (deleteError) {
             setRelationships(previousRelationships);
             setSavingState('Error');
             setError(deleteError.message || 'Failed to delete relationship.');
         }
-    }, [canEdit, commitEditorState, editMode, notifyEditModeRequired, relationships, selectedEdgeId, tables]);
+    }, [canEdit, commitEditorState, editMode, notifyEditModeRequired, relationships, schedulePreviewUpload, selectedEdgeId, tables]);
 
     const deleteSelectedNode = useCallback(async () => {
         if (!selectedNodeId) return;
@@ -452,6 +512,7 @@ function DiagramEditorContent() {
                 const response = await api.post('/api/v1/diagram-relationships', { diagram_id: Number(diagramId), from_column_id: relationshipDraft.from_column_id, to_column_id: relationshipDraft.to_column_id, type: relationshipModalState.type });
                 const created = { ...(response?.data ?? response), sourceHandle: relationshipDraft.sourceHandle, targetHandle: relationshipDraft.targetHandle, color };
                 commitEditorState(tables, [...relationships, created], tables, relationships);
+                schedulePreviewUpload();
                 setSavingState('Autosaved');
             } catch (connectError) { setSavingState('Error'); setError(connectError.message || 'Failed to create relationship.'); }
         } else {
@@ -473,6 +534,7 @@ function DiagramEditorContent() {
         try {
             setSavingState('Saving...');
             await api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) });
+            schedulePreviewUpload();
             setSavingState('Autosaved');
         } catch (dragError) {
             setTables(previousTables);
@@ -480,7 +542,7 @@ function DiagramEditorContent() {
             if (dragError?.status === 401) return handle401();
             setError(dragError.message || 'Failed to update table position.');
         }
-    }, [commitEditorState, handle401, relationships, tables]);
+    }, [commitEditorState, handle401, relationships, schedulePreviewUpload, tables]);
 
     const handleViewportSave = useCallback((viewport) => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
@@ -497,6 +559,7 @@ function DiagramEditorContent() {
             const viewport = reactFlowRef.current?.getViewport?.() ?? diagram?.viewport ?? { x: 0, y: 0, zoom: 1 };
             await Promise.all(nodes.map((node) => api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) })));
             await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport });
+            await uploadDiagramPreview();
             setSavingState('Saved');
         } catch (saveError) {
             setSavingState('Error');
@@ -516,6 +579,7 @@ function DiagramEditorContent() {
             const response = await api.post('/api/v1/diagram-tables', { diagram_id: Number(diagramId), name: addTableForm.name, schema: addTableForm.schema || null, color, x: 120, y: 120, w: defaultDimensions.width, h: defaultDimensions.height });
             const nextTables = [...tables, { ...normalizeTable(response?.data ?? response), color }];
             commitEditorState(nextTables, relationships, tables, relationships);
+            schedulePreviewUpload();
             setShowAddTableModal(false);
             setAddTableForm({ name: '', schema: '' });
             setSavingState('Autosaved');
@@ -539,12 +603,14 @@ function DiagramEditorContent() {
                 const createdColumn = response?.data ?? response;
                 const nextTables = tables.map((table) => (String(table.id) === String(sourceForm.tableId) ? { ...table, columns: [...(table.columns ?? []), createdColumn] } : table));
                 commitEditorState(nextTables, relationships, previousTables, relationships);
+                schedulePreviewUpload();
                 setNodes((nds) => nds.map((n) => (n.id === String(sourceForm.tableId) ? { ...n } : n)));
             } else {
                 const response = await api.patch(`/api/v1/diagram-columns/${editingColumn.id}`, { name: sourceForm.name, type: sourceForm.type, nullable: sourceForm.nullable, primary: sourceForm.primary, unique: sourceForm.unique, default: sourceForm.default || null });
                 const updatedColumn = response?.data ?? response;
                 const nextTables = tables.map((table) => ({ ...table, columns: (table.columns ?? []).map((column) => (Number(column.id) === Number(updatedColumn.id) ? updatedColumn : column)) }));
                 commitEditorState(nextTables, relationships, previousTables, relationships);
+                schedulePreviewUpload();
             }
             setShowAddColumnModal(false); setEditingColumn(null); setAddColumnForm(defaultColumnForm); setSavingState('Autosaved');
         } catch (submitError) {
