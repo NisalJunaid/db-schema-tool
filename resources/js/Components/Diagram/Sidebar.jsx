@@ -110,14 +110,19 @@ export default function Sidebar({
                     const colorMeta = getTableColorMeta(table.color);
 
                     return (
-                        <div key={table.id} className="relative rounded-lg border border-slate-200">
+                        <div
+                            key={table.id}
+                            className="relative rounded-lg border border-slate-200"
+                            style={{ borderLeftWidth: '4px', borderLeftColor: colorMeta.solid }}
+                        >
                             <button
                                 type="button"
                                 onClick={() => {
                                     toggleTable(table.id);
                                     onFocusTable(table.id);
                                 }}
-                                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50"
+                                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                                style={{ backgroundColor: colorMeta.tint }}
                             >
                                 <div className="flex min-w-0 items-center gap-2">
                                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorMeta.solid }} />

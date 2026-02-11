@@ -48,7 +48,7 @@ function TableNode({ data }) {
     const anchorRect = colorButtonRef.current?.getBoundingClientRect() ?? null;
 
     return (
-        <div className="min-w-[320px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+        <div className="h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
             <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2" style={{ backgroundColor: colorMeta.tint }}>
                 <div className="flex min-w-0 items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorMeta.solid }} />

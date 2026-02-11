@@ -116,3 +116,26 @@ export function parseColumnIdFromHandle(handleId) {
     const matched = String(handleId ?? '').match(/^col-(\d+)-(in|out)$/);
     return matched ? Number(matched[1]) : null;
 }
+
+export function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+export function computeTableDimensions(table) {
+    const columns = Array.isArray(table?.columns) ? table.columns : [];
+    const headerHeight = 44;
+    const rowHeight = 34;
+    const minWidth = 260;
+    const maxWidth = 420;
+    const charWidth = 8;
+    const baseWidth = 180;
+    const longestNameLength = Math.max(
+        String(table?.name ?? '').length,
+        ...columns.map((column) => String(column?.name ?? '').length),
+    );
+
+    const width = clamp(baseWidth + longestNameLength * charWidth, minWidth, maxWidth);
+    const height = headerHeight + rowHeight * Math.max(columns.length, 1);
+
+    return { width, height };
+}
