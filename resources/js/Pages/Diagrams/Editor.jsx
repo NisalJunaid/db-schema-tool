@@ -1,6 +1,6 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toBlob, toPng } from 'html-to-image';
+import { toPng } from 'html-to-image';
 import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges, getRectOfNodes, getViewportForBounds } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
@@ -51,7 +51,6 @@ function DiagramEditorContent() {
     const { diagramId, permissions: pagePermissions = {} } = usePage().props;
     const reactFlowRef = useRef(null);
     const viewportSaveTimerRef = useRef(null);
-    const previewUploadTimerRef = useRef(null);
     const editModeNoticeTimerRef = useRef(null);
 
     const [diagram, setDiagram] = useState(null);
@@ -212,7 +211,6 @@ function DiagramEditorContent() {
 
     useEffect(() => () => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
-        if (previewUploadTimerRef.current) clearTimeout(previewUploadTimerRef.current);
         if (editModeNoticeTimerRef.current) clearTimeout(editModeNoticeTimerRef.current);
     }, []);
 
@@ -225,7 +223,6 @@ function DiagramEditorContent() {
             setSavingState('Saving...');
             await api.patch(`/api/v1/diagram-tables/${tableId}`, { name });
             setSavingState('Autosaved');
-            schedulePreviewUpload();
         } catch (renameError) {
             setTables(previousTables);
             setHistory((current) => ({ ...current, present: buildSnapshot(previousTables, relationships), past: current.past.slice(0, -1) }));
@@ -244,7 +241,6 @@ function DiagramEditorContent() {
             setSavingState('Saving...');
             await api.patch(`/api/v1/diagram-tables/${tableId}`, { color });
             setSavingState('Autosaved');
-            schedulePreviewUpload();
         } catch (updateError) {
             setTables(previousTables);
             setSavingState('Error');
@@ -374,7 +370,6 @@ function DiagramEditorContent() {
             setSavingState('Saving...');
             await api.delete(`/api/v1/diagram-relationships/${selectedEdgeId}`);
             setSavingState('Autosaved');
-            schedulePreviewUpload();
         } catch (deleteError) {
             setRelationships(previousRelationships);
             setSavingState('Error');
@@ -458,14 +453,13 @@ function DiagramEditorContent() {
                 const created = { ...(response?.data ?? response), sourceHandle: relationshipDraft.sourceHandle, targetHandle: relationshipDraft.targetHandle, color };
                 commitEditorState(tables, [...relationships, created], tables, relationships);
                 setSavingState('Autosaved');
-                schedulePreviewUpload();
             } catch (connectError) { setSavingState('Error'); setError(connectError.message || 'Failed to create relationship.'); }
         } else {
             const relationshipId = relationshipDraft.id;
             const previous = relationships;
             const nextRelationships = relationships.map((item) => (item.id === relationshipId ? { ...item, type: relationshipModalState.type } : item));
             commitEditorState(tables, nextRelationships, tables, previous);
-            try { setSavingState('Saving...'); await api.patch(`/api/v1/diagram-relationships/${relationshipId}`, { type: relationshipModalState.type }); setSavingState('Autosaved'); schedulePreviewUpload(); }
+            try { setSavingState('Saving...'); await api.patch(`/api/v1/diagram-relationships/${relationshipId}`, { type: relationshipModalState.type }); setSavingState('Autosaved'); }
             catch (updateError) { setRelationships(previous); setSavingState('Error'); setError(updateError.message || 'Failed to update relationship.'); }
         }
         setRelationshipModalState((state) => ({ ...state, open: false }));
@@ -480,7 +474,6 @@ function DiagramEditorContent() {
             setSavingState('Saving...');
             await api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) });
             setSavingState('Autosaved');
-            schedulePreviewUpload();
         } catch (dragError) {
             setTables(previousTables);
             setSavingState('Error');
@@ -504,7 +497,6 @@ function DiagramEditorContent() {
             const viewport = reactFlowRef.current?.getViewport?.() ?? diagram?.viewport ?? { x: 0, y: 0, zoom: 1 };
             await Promise.all(nodes.map((node) => api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) })));
             await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport });
-            await uploadDiagramPreview();
             setSavingState('Saved');
         } catch (saveError) {
             setSavingState('Error');
@@ -527,7 +519,6 @@ function DiagramEditorContent() {
             setShowAddTableModal(false);
             setAddTableForm({ name: '', schema: '' });
             setSavingState('Autosaved');
-            schedulePreviewUpload();
         } catch (submitError) {
             setSavingState('Error');
             const validationErrors = submitError?.payload?.errors ?? {};
@@ -555,7 +546,7 @@ function DiagramEditorContent() {
                 const nextTables = tables.map((table) => ({ ...table, columns: (table.columns ?? []).map((column) => (Number(column.id) === Number(updatedColumn.id) ? updatedColumn : column)) }));
                 commitEditorState(nextTables, relationships, previousTables, relationships);
             }
-            setShowAddColumnModal(false); setEditingColumn(null); setAddColumnForm(defaultColumnForm); setSavingState('Autosaved'); schedulePreviewUpload();
+            setShowAddColumnModal(false); setEditingColumn(null); setAddColumnForm(defaultColumnForm); setSavingState('Autosaved');
         } catch (submitError) {
             setTables(previousTables);
             setSavingState('Error');
@@ -589,87 +580,6 @@ function DiagramEditorContent() {
             instance,
         };
     };
-
-    const captureDiagramBlob = async ({ pixelRatio = 2 } = {}) => {
-        const captureTarget = resolveDiagramCaptureElements();
-        if (!captureTarget) return null;
-
-        const { viewportElement, width, height, instance } = captureTarget;
-        const nodesForBounds = instance.getNodes?.() ?? [];
-        const safeNodes = nodesForBounds.filter((node) => Number.isFinite(node?.position?.x) && Number.isFinite(node?.position?.y));
-        if (!safeNodes.length) return null;
-
-        const originalViewport = instance.getViewport?.() ?? { x: 0, y: 0, zoom: 1 };
-
-        try {
-            const bounds = getRectOfNodes(safeNodes);
-            const targetViewport = getViewportForBounds(bounds, width, height, 0.2, 2);
-            await instance.setViewport?.(targetViewport, { duration: 0 });
-            await new Promise((resolve) => requestAnimationFrame(resolve));
-
-            return await toBlob(viewportElement, {
-                backgroundColor: '#f8fafc',
-                cacheBust: true,
-                pixelRatio,
-                useCORS: true,
-                filter: (node) => {
-                    if (!node?.classList) return true;
-                    return !Array.from(node.classList).some((className) => EXCLUDED_CAPTURE_CLASSES.has(className));
-                },
-            });
-        } finally {
-            await instance.setViewport?.(originalViewport, { duration: 0 });
-        }
-    };
-
-    const generatePreviewBlob = async () => {
-        try {
-            return await captureDiagramBlob({ pixelRatio: 2 });
-        } catch (generationError) {
-            console.warn('Failed to generate diagram preview image:', generationError);
-            if (isImageSecurityError(generationError)) {
-                setError(IMAGE_EXPORT_SECURITY_MESSAGE);
-                return null;
-            }
-            throw generationError;
-        }
-    };
-
-
-    async function uploadDiagramPreview() {
-        try {
-            const blob = await generatePreviewBlob();
-            if (!blob) return;
-
-            const formData = new FormData();
-            formData.append('preview', blob, 'preview.png');
-
-            const response = await api.post(`/api/v1/diagrams/${diagramId}/preview`, formData, {
-                headers: { Accept: 'application/json' },
-            });
-            const payload = response?.data ?? response;
-
-            if (payload?.preview_url || payload?.preview_path) {
-                // Regression check: manual save should refresh diagram cards with new preview metadata immediately.
-                setDiagram((current) => (current
-                    ? {
-                        ...current,
-                        preview_url: payload.preview_url ?? current.preview_url,
-                        preview_path: payload.preview_path ?? current.preview_path,
-                    }
-                    : current));
-            }
-        } catch (uploadError) {
-            console.warn('Skipping preview upload because image generation failed:', uploadError);
-        }
-    }
-
-    function schedulePreviewUpload() {
-        if (previewUploadTimerRef.current) clearTimeout(previewUploadTimerRef.current);
-        previewUploadTimerRef.current = setTimeout(() => {
-            uploadDiagramPreview().catch(() => null);
-        }, 800);
-    }
 
     const exportDownload = async (url, filename, mime = 'text/plain') => {
         const response = await fetch(url, { credentials: 'same-origin' });
