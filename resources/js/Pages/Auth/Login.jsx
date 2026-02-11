@@ -3,6 +3,7 @@ import InputError from '@/Components/InputError';
 import PrimaryButton from '@/Components/PrimaryButton';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
+import AppLogo from '@/Components/AppLogo';
 
 export default function Login() {
     const { data, setData, post, processing, errors } = useForm({
@@ -19,6 +20,10 @@ export default function Login() {
     return (
         <GuestLayout title="Sign in">
             <Head title="Log in" />
+
+            <div className="mb-6 flex justify-center">
+                <AppLogo className="h-14 w-auto" />
+            </div>
 
             <form onSubmit={submit} className="space-y-4">
                 <div>
