@@ -1,7 +1,7 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toPng } from 'html-to-image';
-import { Background, ControlButton, Controls, MiniMap, ReactFlow, applyNodeChanges, useUpdateNodeInternals } from 'reactflow';
+import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
 import Sidebar from '@/Components/Diagram/Sidebar';
@@ -43,10 +43,9 @@ const withAssignedRelationshipColors = (sourceRelationships) => {
     });
 };
 
-export default function DiagramEditor() {
+function DiagramEditorContent() {
     const { diagramId } = usePage().props;
     const reactFlowRef = useRef(null);
-    const updateNodeInternals = useUpdateNodeInternals();
     const viewportSaveTimerRef = useRef(null);
     const editModeNoticeTimerRef = useRef(null);
 
@@ -241,10 +240,12 @@ export default function DiagramEditor() {
         const nextTables = tables.map((table) => ({ ...table, columns: (table.columns ?? []).filter((column) => Number(column.id) !== Number(columnId)) }));
         const nextRelationships = relationships.filter((r) => Number(r.from_column_id) !== Number(columnId) && Number(r.to_column_id) !== Number(columnId));
         commitEditorState(nextTables, nextRelationships, previousTables, previousRelationships);
-        if (owningTable?.id != null) requestAnimationFrame(() => updateNodeInternals(String(owningTable.id)));
+        if (owningTable?.id != null) {
+            setNodes((nds) => nds.map((n) => (n.id === String(owningTable.id) ? { ...n } : n)));
+        }
         try { setSavingState('Saving...'); await api.delete(`/api/v1/diagram-columns/${columnId}`); setSavingState('Autosaved'); }
         catch (deleteError) { setTables(previousTables); setSavingState('Error'); setError(deleteError.message || 'Failed to delete field.'); }
-    }, [commitEditorState, editMode, relationships, tables, updateNodeInternals]);
+    }, [commitEditorState, editMode, relationships, tables]);
 
     const onToggleActiveEditTable = useCallback((tableId) => setActiveEditTableId((current) => (Number(current) === Number(tableId) ? null : tableId)), []);
     const notifyEditModeRequired = useCallback(() => {
@@ -256,18 +257,25 @@ export default function DiagramEditor() {
 
     useEffect(() => {
         setNodes(tables.map((table) => {
+            if (table?.id == null) return null;
             const computedDimensions = computeTableDimensions(table);
-            const width = Number(table.w ?? computedDimensions.width ?? defaultTableSize.w);
+            const rawWidth = Number(table?.w ?? computedDimensions.width ?? defaultTableSize.w);
+            const width = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : defaultTableSize.w;
+            const rawX = Number(table?.x ?? 0);
+            const rawY = Number(table?.y ?? 0);
             return {
                 id: String(table.id),
                 type: 'tableNode',
                 draggable: editMode,
-                position: { x: Number(table.x ?? 0), y: Number(table.y ?? 0) },
+                position: {
+                    x: Number.isFinite(rawX) ? rawX : 0,
+                    y: Number.isFinite(rawY) ? rawY : 0,
+                },
                 data: buildNodeData(table),
                 style: { width },
                 selected: selectedNodeId === String(table.id),
             };
-        }));
+        }).filter(Boolean));
     }, [tables, editMode, selectedColumnId, buildNodeData, selectedNodeId]);
 
     const edges = useMemo(() => relationships.map((relationship) => {
@@ -511,7 +519,7 @@ export default function DiagramEditor() {
                 const createdColumn = response?.data ?? response;
                 const nextTables = tables.map((table) => (String(table.id) === String(sourceForm.tableId) ? { ...table, columns: [...(table.columns ?? []), createdColumn] } : table));
                 commitEditorState(nextTables, relationships, previousTables, relationships);
-                requestAnimationFrame(() => updateNodeInternals(String(sourceForm.tableId)));
+                setNodes((nds) => nds.map((n) => (n.id === String(sourceForm.tableId) ? { ...n } : n)));
             } else {
                 const response = await api.patch(`/api/v1/diagram-columns/${editingColumn.id}`, { name: sourceForm.name, type: sourceForm.type, nullable: sourceForm.nullable, primary: sourceForm.primary, unique: sourceForm.unique, default: sourceForm.default || null });
                 const updatedColumn = response?.data ?? response;
@@ -677,6 +685,14 @@ export default function DiagramEditor() {
             <OpenDiagramModal open={showOpenModal} diagrams={allDiagrams} onClose={() => setShowOpenModal(false)} onOpen={(selected) => router.visit(`/diagrams/${selected.id}`)} />
             <NewDiagramModal open={showNewModal} teams={teams} onClose={() => setShowNewModal(false)} onCreate={async (payload) => { const created = await api.post('/api/v1/diagrams', payload); router.visit(`/diagrams/${created?.id}`); }} />
         </>
+    );
+}
+
+export default function DiagramEditor() {
+    return (
+        <ReactFlowProvider>
+            <DiagramEditorContent />
+        </ReactFlowProvider>
     );
 }
 
