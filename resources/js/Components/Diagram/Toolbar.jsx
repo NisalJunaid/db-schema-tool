@@ -42,7 +42,7 @@ export default function Toolbar({
                         <i className="fa-solid fa-arrow-left text-sm" aria-hidden="true" />
                         <span className="sr-only">Back to diagrams</span>
                     </Link>
-                    <AppLogo className="h-8 w-auto" />
+                    <AppLogo className="h-10 w-auto" />
                 </div>
 
                 <div className="flex items-center gap-x-2">

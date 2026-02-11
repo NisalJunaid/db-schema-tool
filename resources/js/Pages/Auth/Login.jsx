@@ -22,7 +22,7 @@ export default function Login() {
             <Head title="Log in" />
 
             <div className="mb-6 flex justify-center">
-                <AppLogo className="h-14 w-auto" />
+                <AppLogo className="h-10 w-auto" />
             </div>
 
             <form onSubmit={submit} className="space-y-4">

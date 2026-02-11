@@ -24,7 +24,7 @@ export default function MainLayout({ children }) {
                 <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
                     <div className="flex items-center gap-6">
                         <Link href="/dashboard" className="inline-flex items-center">
-                            <AppLogo className="h-9 w-auto" />
+                            <AppLogo className="h-10 w-auto" />
                         </Link>
                         <nav className="hidden items-center gap-1 md:flex">
                             {leftNav.map((item) => (
