@@ -27,7 +27,7 @@ export default function TeamShow() {
                         <h1 className="text-xl font-semibold">{team?.name}</h1>
                         <p className="text-sm text-slate-600">Owner: {team?.owner?.name}</p>
                     </div>
-                    {team?.can_manage && (
+                    {team?.permissions?.canManageMembers && (
                         <button type="button" onClick={() => setShowInvite(true)} className="rounded bg-indigo-600 px-3 py-2 text-sm text-white">Invite Member</button>
                     )}
                 </div>
@@ -45,7 +45,7 @@ export default function TeamShow() {
                                 <td>{member.email}</td>
                                 <td>
                                     <select
-                                        disabled={!team?.can_manage}
+                                        disabled={!team?.permissions?.canManageMembers}
                                         value={member.role}
                                         onChange={async (e) => {
                                             await api.patch(`/api/v1/teams/${teamId}/members/${member.id}`, { role: e.target.value });
@@ -59,7 +59,7 @@ export default function TeamShow() {
                                     </select>
                                 </td>
                                 <td>
-                                    {team?.can_manage && (
+                                    {team?.permissions?.canManageMembers && (
                                         <button type="button" onClick={async () => { await api.delete(`/api/v1/teams/${teamId}/members/${member.id}`); loadTeam(); }} className="text-red-600">Remove</button>
                                     )}
                                 </td>

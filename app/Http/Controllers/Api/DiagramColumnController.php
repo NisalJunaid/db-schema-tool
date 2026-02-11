@@ -33,7 +33,7 @@ class DiagramColumnController extends Controller
 
         $diagramTable = DiagramTable::query()->findOrFail($request->integer('diagram_table_id'));
 
-        $this->authorize('update', $diagramTable->diagram);
+        $this->authorize('edit', $diagramTable->diagram);
 
         $diagramColumn = DiagramColumn::create($validated);
 
@@ -42,7 +42,7 @@ class DiagramColumnController extends Controller
 
     public function update(Request $request, DiagramColumn $diagramColumn): JsonResponse
     {
-        $this->authorize('update', $diagramColumn->diagramTable->diagram);
+        $this->authorize('edit', $diagramColumn->diagramTable->diagram);
 
         $validated = $request->validate([
             'name' => [
@@ -68,7 +68,7 @@ class DiagramColumnController extends Controller
 
     public function destroy(DiagramColumn $diagramColumn): Response
     {
-        $this->authorize('update', $diagramColumn->diagramTable->diagram);
+        $this->authorize('edit', $diagramColumn->diagramTable->diagram);
 
         $diagramColumn->delete();
 

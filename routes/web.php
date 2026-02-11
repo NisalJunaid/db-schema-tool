@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\InvitationController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\TeamMemberController;
 use App\Http\Controllers\DashboardController;
+use App\Models\Diagram;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -26,7 +28,18 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/diagrams', fn () => Inertia::render('Diagrams/Index'))->name('diagrams.index');
 
-    Route::get('/diagrams/{diagram}', fn (string $diagram) => Inertia::render('Diagrams/Editor', ['diagramId' => $diagram]))->name('diagrams.editor');
+    Route::get('/diagrams/{diagram}', function (Diagram $diagram) {
+        Gate::authorize('view', $diagram);
+
+        return Inertia::render('Diagrams/Editor', [
+            'diagramId' => (string) $diagram->getKey(),
+            'permissions' => [
+                'canEdit' => auth()->user()->can('edit', $diagram),
+                'canManageAccess' => auth()->user()->can('manageAccess', $diagram),
+                'canDelete' => auth()->user()->can('delete', $diagram),
+            ],
+        ]);
+    })->name('diagrams.editor');
 
     Route::get('/teams', fn () => Inertia::render('Teams/Index'))->name('teams.index');
     Route::get('/invitations', fn () => Inertia::render('Invitations/Index'))->name('invitations.index');

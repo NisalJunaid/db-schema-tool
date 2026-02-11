@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class TeamController extends Controller
 {
@@ -24,7 +25,18 @@ class TeamController extends Controller
             ->with('owner:id,name,email')
             ->select('teams.id', 'teams.name', 'teams.owner_user_id')
             ->orderBy('teams.name')
-            ->get();
+            ->get()
+            ->map(fn (Team $team) => [
+                'id' => $team->id,
+                'name' => $team->name,
+                'owner_user_id' => $team->owner_user_id,
+                'owner' => $team->owner,
+                'permissions' => [
+                    'canManageMembers' => $request->user()->can('manageMembers', $team),
+                    'canManageTeam' => $request->user()->can('manageTeam', $team),
+                ],
+            ])
+            ->values();
 
         return response()->json($teams);
     }
@@ -64,13 +76,16 @@ class TeamController extends Controller
             'owner' => $team->owner,
             'members' => $members,
             'diagrams' => $team->diagrams,
-            'can_manage' => $request->user()->can('manage', $team),
+            'permissions' => [
+                'canManageMembers' => $request->user()->can('manageMembers', $team),
+                'canManageTeam' => $request->user()->can('manageTeam', $team),
+            ],
         ]);
     }
 
     public function invite(Request $request, Team $team): JsonResponse
     {
-        $this->authorize('manage', $team);
+        $this->authorize('manageMembers', $team);
 
         $validated = $request->validate([
             'email' => ['required', 'email'],
@@ -82,8 +97,33 @@ class TeamController extends Controller
             ],
         ]);
 
+        $email = Invitation::normalizeEmail($validated['email']);
+
+        $alreadyInTeam = $team->users()
+            ->whereRaw('LOWER(TRIM(users.email)) = ?', [$email])
+            ->exists();
+
+        if ($alreadyInTeam) {
+            throw ValidationException::withMessages([
+                'email' => ['User already in team.'],
+            ]);
+        }
+
+        $pendingTeamInvitation = Invitation::query()
+            ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
+            ->where('type', 'team')
+            ->where('team_id', $team->id)
+            ->where('status', 'pending')
+            ->exists();
+
+        if ($pendingTeamInvitation) {
+            throw ValidationException::withMessages([
+                'email' => ['Invitation already sent.'],
+            ]);
+        }
+
         $invitation = Invitation::create([
-            'email' => Invitation::normalizeEmail($validated['email']),
+            'email' => $email,
             'inviter_user_id' => $request->user()->id,
             'type' => 'team',
             'team_id' => $team->id,
@@ -92,8 +132,21 @@ class TeamController extends Controller
         ]);
 
         foreach (($validated['diagram_ids'] ?? []) as $diagramId) {
+            $pendingDiagramInvitation = Invitation::query()
+                ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
+                ->where('type', 'diagram')
+                ->where('diagram_id', (int) $diagramId)
+                ->where('status', 'pending')
+                ->exists();
+
+            if ($pendingDiagramInvitation) {
+                throw ValidationException::withMessages([
+                    'email' => ['Invitation already sent.'],
+                ]);
+            }
+
             Invitation::create([
-                'email' => Invitation::normalizeEmail($validated['email']),
+                'email' => $email,
                 'inviter_user_id' => $request->user()->id,
                 'type' => 'diagram',
                 'team_id' => $team->id,
@@ -106,7 +159,7 @@ class TeamController extends Controller
         $invitation->load(['inviter:id,name,email', 'team:id,name']);
         InvitationController::sendInvitationMail($invitation);
 
-        $existingUser = User::query()->whereRaw('LOWER(TRIM(email)) = ?', [Invitation::normalizeEmail($validated['email'])])->exists();
+        $existingUser = User::query()->whereRaw('LOWER(TRIM(email)) = ?', [$email])->exists();
 
         return response()->json([
             'message' => 'Invite created successfully.',

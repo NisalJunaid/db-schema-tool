@@ -43,11 +43,16 @@ class DiagramPolicy
             || $this->hasExplicitAccess($user, $diagram, ['viewer', 'editor', 'admin']);
     }
 
-    public function update(User $user, Diagram $diagram): bool
+    public function edit(User $user, Diagram $diagram): bool
     {
         return $this->isOwner($user, $diagram)
             || $this->hasOwnerTeamRole($user, $diagram, ['admin', 'owner'])
             || $this->hasExplicitAccess($user, $diagram, ['editor', 'admin']);
+    }
+
+    public function update(User $user, Diagram $diagram): bool
+    {
+        return $this->edit($user, $diagram);
     }
 
     public function delete(User $user, Diagram $diagram): bool
@@ -59,7 +64,9 @@ class DiagramPolicy
 
     public function manageAccess(User $user, Diagram $diagram): bool
     {
-        return $this->delete($user, $diagram);
+        return $this->isOwner($user, $diagram)
+            || $this->hasOwnerTeamRole($user, $diagram, ['admin', 'owner'])
+            || $this->hasExplicitAccess($user, $diagram, ['admin']);
     }
 
     private function isOwner(User $user, Diagram $diagram): bool

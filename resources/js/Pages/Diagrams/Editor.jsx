@@ -13,6 +13,7 @@ import ExportModal from '@/Components/Diagram/modals/ExportModal';
 import NewDiagramModal from '@/Components/Diagram/modals/NewDiagramModal';
 import OpenDiagramModal from '@/Components/Diagram/modals/OpenDiagramModal';
 import RelationshipModal from '@/Components/Diagram/modals/RelationshipModal';
+import ShareAccessModal from '@/Components/Diagrams/ShareAccessModal';
 import { asCollection, computeTableDimensions, getTableColorMeta, parseColumnIdFromHandle, relationshipLabel, toColumnHandleId } from '@/Components/Diagram/utils';
 import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
@@ -44,7 +45,7 @@ const withAssignedRelationshipColors = (sourceRelationships) => {
 };
 
 function DiagramEditorContent() {
-    const { diagramId } = usePage().props;
+    const { diagramId, permissions: pagePermissions = {} } = usePage().props;
     const reactFlowRef = useRef(null);
     const viewportSaveTimerRef = useRef(null);
     const previewUploadTimerRef = useRef(null);
@@ -84,9 +85,15 @@ function DiagramEditorContent() {
     const [showNewModal, setShowNewModal] = useState(false);
     const [allDiagrams, setAllDiagrams] = useState([]);
     const [teams, setTeams] = useState([]);
+    const [showShareModal, setShowShareModal] = useState(false);
 
     const canUndo = history.past.length > 0;
     const canRedo = history.future.length > 0;
+
+    const permissions = diagram?.permissions ?? pagePermissions ?? {};
+    const canEdit = Boolean(permissions.canEdit);
+    const canManageAccess = Boolean(permissions.canManageAccess);
+
 
     const columnToTableMap = useMemo(() => {
         const map = {};
@@ -192,6 +199,12 @@ function DiagramEditorContent() {
         loadMeta().catch(() => {});
     }, []);
 
+    useEffect(() => {
+        if (!canEdit && editMode) {
+            setEditMode(false);
+        }
+    }, [canEdit, editMode]);
+
     useEffect(() => () => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
         if (previewUploadTimerRef.current) clearTimeout(previewUploadTimerRef.current);
@@ -199,7 +212,7 @@ function DiagramEditorContent() {
     }, []);
 
     const onRenameTable = useCallback(async (tableId, name) => {
-        if (!editMode) return;
+        if (!canEdit || !editMode) return;
         const previousTables = tables;
         const nextTables = tables.map((entry) => (entry.id === tableId ? { ...entry, name } : entry));
         commitEditorState(nextTables, relationships, previousTables, relationships);
@@ -215,10 +228,10 @@ function DiagramEditorContent() {
             if (renameError?.status === 401) return handle401();
             setError(renameError.message || 'Failed to rename table.');
         }
-    }, [buildSnapshot, commitEditorState, editMode, handle401, relationships, tables]);
+    }, [buildSnapshot, canEdit, commitEditorState, editMode, handle401, relationships, tables]);
 
     const onUpdateTableColor = useCallback(async (tableId, color) => {
-        if (!editMode) return;
+        if (!canEdit || !editMode) return;
         const previousTables = tables;
         const nextTables = tables.map((table) => (table.id === tableId ? { ...table, color } : table));
         commitEditorState(nextTables, relationships, previousTables, relationships);
@@ -232,13 +245,13 @@ function DiagramEditorContent() {
             setSavingState('Error');
             setError(updateError.message || 'Failed to update table color.');
         }
-    }, [commitEditorState, editMode, relationships, tables]);
+    }, [canEdit, commitEditorState, editMode, relationships, tables]);
 
     const onAddColumn = useCallback((tableId) => { setFormErrors({}); setColumnModalMode('create'); setEditingColumn(null); setAddColumnForm({ ...defaultColumnForm, tableId: String(tableId) }); setShowAddColumnModal(true); }, []);
     const onEditColumn = useCallback((column) => { setFormErrors({}); setColumnModalMode('edit'); setEditingColumn(column); setAddColumnForm({ ...defaultColumnForm, tableId: String(column.diagram_table_id), name: column.name, type: column.type, nullable: Boolean(column.nullable), primary: Boolean(column.primary), unique: Boolean(column.unique), default: column.default ?? '' }); setShowAddColumnModal(true); }, []);
 
     const onDeleteColumn = useCallback(async (columnId) => {
-        if (!editMode || !window.confirm('Delete this field?')) return;
+        if (!canEdit || !editMode || !window.confirm('Delete this field?')) return;
         const previousTables = tables;
         const previousRelationships = relationships;
         const owningTable = tables.find((table) => (table.columns ?? []).some((column) => Number(column.id) === Number(columnId)));
@@ -250,7 +263,7 @@ function DiagramEditorContent() {
         }
         try { setSavingState('Saving...'); await api.delete(`/api/v1/diagram-columns/${columnId}`); setSavingState('Autosaved'); }
         catch (deleteError) { setTables(previousTables); setSavingState('Error'); setError(deleteError.message || 'Failed to delete field.'); }
-    }, [commitEditorState, editMode, relationships, tables]);
+    }, [canEdit, commitEditorState, editMode, relationships, tables]);
 
     const onToggleActiveEditTable = useCallback((tableId) => setActiveEditTableId((current) => (Number(current) === Number(tableId) ? null : tableId)), []);
     const notifyEditModeRequired = useCallback(() => {
@@ -314,7 +327,7 @@ function DiagramEditorContent() {
     }, []);
 
     const onConnect = useCallback((connection) => {
-        if (!editMode) return;
+        if (!canEdit || !editMode) return;
         const sourceColumnId = parseColumnIdFromHandle(connection.sourceHandle);
         const targetColumnId = parseColumnIdFromHandle(connection.targetHandle);
         if (!sourceColumnId || !targetColumnId || sourceColumnId === targetColumnId) return;
@@ -322,7 +335,7 @@ function DiagramEditorContent() {
         if (isDuplicate) return;
         setRelationshipDraft({ sourceHandle: connection.sourceHandle, targetHandle: connection.targetHandle, from_column_id: sourceColumnId, to_column_id: targetColumnId });
         setRelationshipModalState({ open: true, mode: 'create', type: 'one_to_many' });
-    }, [editMode, relationships]);
+    }, [canEdit, editMode, relationships]);
 
     const onNodeClick = useCallback((_, node) => {
         setSelectedNodeId(String(node.id));
@@ -335,16 +348,16 @@ function DiagramEditorContent() {
     }, []);
 
     const onEdgeDoubleClick = useCallback((_, edge) => {
-        if (!editMode) return;
+        if (!canEdit || !editMode) return;
         const relationship = relationships.find((entry) => String(entry.id) === String(edge.id));
         if (!relationship) return;
         setRelationshipDraft(relationship);
         setRelationshipModalState({ open: true, mode: 'edit', type: relationship.type ?? 'one_to_many' });
-    }, [editMode, relationships]);
+    }, [canEdit, editMode, relationships]);
 
     const deleteSelectedRelationship = useCallback(async () => {
         if (!selectedEdgeId) return;
-        if (!editMode) {
+        if (!canEdit || !editMode) {
             notifyEditModeRequired();
             return;
         }
@@ -362,11 +375,11 @@ function DiagramEditorContent() {
             setSavingState('Error');
             setError(deleteError.message || 'Failed to delete relationship.');
         }
-    }, [commitEditorState, editMode, notifyEditModeRequired, relationships, selectedEdgeId, tables]);
+    }, [canEdit, commitEditorState, editMode, notifyEditModeRequired, relationships, selectedEdgeId, tables]);
 
     const deleteSelectedNode = useCallback(async () => {
         if (!selectedNodeId) return;
-        if (!editMode) {
+        if (!canEdit || !editMode) {
             notifyEditModeRequired();
             return;
         }
@@ -396,7 +409,7 @@ function DiagramEditorContent() {
             setSavingState('Error');
             setError(deleteError.message || 'Failed to delete table.');
         }
-    }, [columnToTableMap, commitEditorState, editMode, notifyEditModeRequired, relationships, selectedNodeId, tables]);
+    }, [canEdit, columnToTableMap, commitEditorState, editMode, notifyEditModeRequired, relationships, selectedNodeId, tables]);
 
     const deleteSelection = useCallback(async () => {
         if (selectedEdgeId) {
@@ -408,6 +421,7 @@ function DiagramEditorContent() {
 
     useEffect(() => {
         const onKeyDown = (event) => {
+            if (!canEdit) return;
             if (event.key !== 'Delete' && event.key !== 'Backspace') return;
             if (!selectedEdgeId && !selectedNodeId) return;
             event.preventDefault();
@@ -415,7 +429,7 @@ function DiagramEditorContent() {
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [deleteSelection, selectedEdgeId, selectedNodeId]);
+    }, [canEdit, deleteSelection, selectedEdgeId, selectedNodeId]);
 
     const miniMapNodeColor = useCallback((node) => {
         const colorValue = node?.data?.table?.color ?? node?.data?.color;
@@ -495,7 +509,7 @@ function DiagramEditorContent() {
 
     const submitAddTable = async (event) => {
         event.preventDefault();
-        if (!editMode) return;
+        if (!canEdit || !editMode) return;
         setFormErrors({});
         try {
             const tableColors = tables.map((table) => table.color).filter(Boolean);
@@ -517,7 +531,7 @@ function DiagramEditorContent() {
 
     const submitAddColumn = async (event, submittedForm = addColumnForm) => {
         event.preventDefault();
-        if (!editMode) return;
+        if (!canEdit || !editMode) return;
         const sourceForm = submittedForm;
         const previousTables = tables;
         setFormErrors({});
@@ -621,13 +635,14 @@ function DiagramEditorContent() {
                     onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
                     onFocusTable={focusOnTable}
                     onFocusColumn={setSelectedColumnId}
-                    onAddTable={() => { if (!editMode) return; setFormErrors({}); setShowAddTableModal(true); }}
+                    onAddTable={() => { if (!canEdit || !editMode) return; setFormErrors({}); setShowAddTableModal(true); }}
                     onAddColumn={onAddColumn}
                     onEditColumn={onEditColumn}
                     onDeleteColumn={onDeleteColumn}
                     onUpdateTableColor={onUpdateTableColor}
-                    editMode={editMode}
-                    onToggleEditMode={() => { setEditMode((current) => !current); setActiveEditTableId(null); }}
+                    editMode={canEdit && editMode}
+                    onToggleEditMode={() => { if (!canEdit) return; setEditMode((current) => !current); setActiveEditTableId(null); }}
+                    canEdit={canEdit}
                 />
 
                 <div className="flex min-w-0 flex-1 flex-col">
@@ -649,6 +664,9 @@ function DiagramEditorContent() {
                         showGrid={showGrid}
                         onToggleMiniMap={() => setShowMiniMap((current) => !current)}
                         onToggleGrid={() => setShowGrid((prev) => !prev)}
+                        canManageAccess={canManageAccess}
+                        onManageAccess={() => setShowShareModal(true)}
+                        isViewOnly={!canEdit}
                     />
 
                     {!editMode && <div className="mx-4 mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">View mode</div>}
@@ -668,7 +686,7 @@ function DiagramEditorContent() {
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            nodesDraggable={editMode}
+                            nodesDraggable={canEdit && editMode}
                             onNodesChange={onNodesChange}
                             onNodeDragStop={onNodeDragStop}
                             onConnect={onConnect}
@@ -683,12 +701,14 @@ function DiagramEditorContent() {
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
                             {showMiniMap && <MiniMap pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
-                            <Controls showInteractive={false} position="bottom-left">
-                                <ControlButton onClick={() => setEditMode((current) => !current)} title="Edit mode" className={editMode ? '!bg-indigo-600 !text-white hover:!bg-indigo-700' : ''}>
-                                    <i className="fa-solid fa-pen-to-square" aria-hidden="true" />
-                                    <span className="sr-only">Edit mode</span>
-                                </ControlButton>
-                            </Controls>
+                            {canEdit && (
+                                <Controls showInteractive={false} position="bottom-left">
+                                    <ControlButton onClick={() => setEditMode((current) => !current)} title="Edit mode" className={editMode ? '!bg-indigo-600 !text-white hover:!bg-indigo-700' : ''}>
+                                        <i className="fa-solid fa-pen-to-square" aria-hidden="true" />
+                                        <span className="sr-only">Edit mode</span>
+                                    </ControlButton>
+                                </Controls>
+                            )}
                         </ReactFlow>
                     </div>
                 </div>
@@ -722,6 +742,7 @@ function DiagramEditorContent() {
             />
             <OpenDiagramModal open={showOpenModal} diagrams={allDiagrams} onClose={() => setShowOpenModal(false)} onOpen={(selected) => router.visit(`/diagrams/${selected.id}`)} />
             <NewDiagramModal open={showNewModal} teams={teams} onClose={() => setShowNewModal(false)} onCreate={async (payload) => { const created = await api.post('/api/v1/diagrams', payload); router.visit(`/diagrams/${created?.id}`); }} />
+            {canManageAccess && <ShareAccessModal diagram={diagram} teams={teams} open={showShareModal} onClose={() => setShowShareModal(false)} />}
         </>
     );
 }

@@ -14,7 +14,7 @@ class DiagramTableController extends Controller
     {
         $validated = $request->validated();
 
-        $this->authorize('update', $request->diagram());
+        $this->authorize('edit', $request->diagram());
 
         $diagramTable = DiagramTable::create($validated);
 
@@ -23,7 +23,7 @@ class DiagramTableController extends Controller
 
     public function update(UpdateDiagramTableRequest $request, DiagramTable $diagramTable): JsonResponse
     {
-        $this->authorize('update', $diagramTable->diagram);
+        $this->authorize('edit', $diagramTable->diagram);
 
         $diagramTable->update($request->validated());
 
@@ -32,7 +32,7 @@ class DiagramTableController extends Controller
 
     public function destroy(DiagramTable $diagramTable): JsonResponse
     {
-        $this->authorize('update', $diagramTable->diagram);
+        $this->authorize('edit', $diagramTable->diagram);
 
         $diagramTable->delete();
 
