@@ -4,14 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateDiagramRequest;
-use App\Mail\InvitationMail;
 use App\Models\Diagram;
 use App\Models\Invitation;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class DiagramController extends Controller
@@ -61,6 +60,7 @@ class DiagramController extends Controller
                     'owner_name' => $ownerName,
                     'is_public' => $diagram->is_public,
                     'preview_image' => $diagram->preview_image,
+                    'preview_path' => $diagram->preview_path ? Storage::url($diagram->preview_path) : null,
                     'updated_at' => $diagram->updated_at,
                 ];
             })
@@ -140,21 +140,22 @@ class DiagramController extends Controller
         $scope = $validated['invite_scope'] ?? 'diagram';
 
         $invitation = Invitation::create([
-            'email' => strtolower($validated['email']),
+            'email' => Invitation::normalizeEmail($validated['email']),
             'inviter_user_id' => $request->user()->id,
             'type' => $scope === 'team' && $diagram->owner_type === 'team' ? 'team' : 'diagram',
             'team_id' => $diagram->owner_type === 'team' ? $diagram->owner_id : null,
             'diagram_id' => $scope === 'diagram' || $diagram->owner_type !== 'team' ? $diagram->id : null,
             'role' => $validated['role'],
+            'email_status' => 'pending',
         ]);
 
         $invitation->load(['inviter:id,name,email', 'team:id,name', 'diagram:id,name']);
-        Mail::to($invitation->email)->send(new InvitationMail($invitation));
+        InvitationController::sendInvitationMail($invitation);
 
-        $existingUser = User::query()->where('email', strtolower($validated['email']))->exists();
+        $existingUser = User::query()->whereRaw('LOWER(TRIM(email)) = ?', [Invitation::normalizeEmail($validated['email'])])->exists();
 
         return response()->json([
-            'message' => 'Invitation sent successfully.',
+            'message' => 'Invite created successfully.',
             'registered_user' => $existingUser,
             'invitation' => $invitation,
         ], 201);

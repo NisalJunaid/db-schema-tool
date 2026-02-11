@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\DiagramAccessController;
+use App\Http\Controllers\Api\DiagramPreviewController;
 use App\Http\Controllers\Api\DiagramColumnController;
 use App\Http\Controllers\Api\DiagramController;
 use App\Http\Controllers\Api\DiagramRelationshipController;
@@ -28,6 +29,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/diagrams/{diagram}', fn (string $diagram) => Inertia::render('Diagrams/Editor', ['diagramId' => $diagram]))->name('diagrams.editor');
 
     Route::get('/teams', fn () => Inertia::render('Teams/Index'))->name('teams.index');
+    Route::get('/invitations', fn () => Inertia::render('Invitations/Index'))->name('invitations.index');
 
     Route::get('/teams/{team}', fn (string $team) => Inertia::render('Teams/Show', ['teamId' => $team]))->name('teams.show');
 
@@ -45,6 +47,7 @@ Route::middleware('auth')->group(function () {
         Route::get('diagrams/{diagram}/export-migrations', [DiagramTransferController::class, 'exportMigrations']);
 
         Route::get('diagrams/{diagram}/access', [DiagramAccessController::class, 'index']);
+        Route::post('diagrams/{diagram}/preview', [DiagramPreviewController::class, 'store']);
         Route::post('diagrams/{diagram}/access', [DiagramAccessController::class, 'store']);
         Route::patch('diagrams/{diagram}/access/{access}', [DiagramAccessController::class, 'update']);
         Route::delete('diagrams/{diagram}/access/{access}', [DiagramAccessController::class, 'destroy']);
@@ -61,7 +64,12 @@ Route::middleware('auth')->group(function () {
         Route::get('admin/users', [AdminUserController::class, 'index']);
         Route::patch('admin/users/{user}/role', [AdminUserController::class, 'updateRole']);
         Route::patch('admin/users/{user}/permissions', [AdminUserController::class, 'updatePermissions']);
-        Route::get('admin/invitations', [InvitationController::class, 'index']);
+        Route::get('invitations', [InvitationController::class, 'index']);
+        Route::post('invitations/{invitation}/accept', [InvitationController::class, 'acceptInApp']);
+        Route::post('invitations/{invitation}/decline', [InvitationController::class, 'declineInApp']);
+
+        Route::get('admin/invitations', [InvitationController::class, 'adminIndex']);
+        Route::post('admin/invitations/{invitation}/resend', [InvitationController::class, 'resend']);
 
         Route::apiResource('diagram-tables', DiagramTableController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('diagram-columns', DiagramColumnController::class)->only(['store', 'update', 'destroy']);

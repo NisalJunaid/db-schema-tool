@@ -4,6 +4,7 @@ import { useState } from 'react';
 const leftNav = [
     { label: 'Diagrams', href: '/diagrams', icon: 'fa-diagram-project' },
     { label: 'Teams', href: '/teams', icon: 'fa-people-group' },
+    { label: 'Invitations', href: '/invitations', icon: 'fa-envelope-open-text' },
 ];
 
 export default function MainLayout({ children }) {
@@ -11,6 +12,7 @@ export default function MainLayout({ children }) {
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const { url, props } = usePage();
     const authUser = props?.auth?.user;
+    const pendingInvitations = Number(props?.pendingInvitations ?? 0);
     const isAdmin = ['admin', 'super_admin'].includes(authUser?.role);
 
     const submitLogout = () => router.post('/logout');
@@ -30,6 +32,9 @@ export default function MainLayout({ children }) {
                                 >
                                     <i className={`fa-solid ${item.icon} mr-2`} />
                                     {item.label}
+                                    {item.href === '/invitations' && pendingInvitations > 0 && (
+                                        <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700">{pendingInvitations}</span>
+                                    )}
                                 </Link>
                             ))}
                         </nav>
@@ -73,6 +78,15 @@ export default function MainLayout({ children }) {
                     </div>
                 )}
             </header>
+
+            {pendingInvitations > 0 && (
+                <div className="border-b border-amber-200 bg-amber-50">
+                    <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 text-sm sm:px-6 lg:px-8">
+                        <span>You have pending invitations waiting for action.</span>
+                        <Link href="/invitations" className="font-semibold text-indigo-700 hover:underline">View invitations</Link>
+                    </div>
+                </div>
+            )}
 
             <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</main>
         </div>
