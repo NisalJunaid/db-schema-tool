@@ -571,17 +571,20 @@ function DiagramEditorContent() {
     const handleImport = async (payload) => { setSavingState('Saving...'); await api.post(`/api/v1/diagrams/${diagramId}/import`, payload); await loadDiagram(); setSavingState('Saved'); };
 
 
-    const generatePreviewDataUrl = async () => {
+    const generatePreviewBlob = async () => {
         const target = document.querySelector('.react-flow__viewport');
         if (!target) return null;
 
         try {
-            return await toPng(target, {
+            const dataUrl = await toPng(target, {
                 backgroundColor: '#f8fafc',
                 cacheBust: true,
                 useCORS: true,
                 pixelRatio: 2,
             });
+
+            const response = await fetch(dataUrl);
+            return await response.blob();
         } catch (generationError) {
             console.warn('Failed to generate diagram preview image:', generationError);
             if (isImageSecurityError(generationError)) {
@@ -595,10 +598,10 @@ function DiagramEditorContent() {
 
     async function uploadDiagramPreview() {
         try {
-            const pngDataUrl = await generatePreviewDataUrl();
-            if (!pngDataUrl) return;
+            const blob = await generatePreviewBlob();
+            if (!blob) return;
 
-            const blob = await (await fetch(pngDataUrl)).blob();
+            console.log('Uploading preview blob:', blob);
             const formData = new FormData();
             formData.append('preview', blob, 'preview.png');
 

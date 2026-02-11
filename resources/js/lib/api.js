@@ -8,7 +8,7 @@ function isFormDataPayload(data) {
     return typeof FormData !== 'undefined' && data instanceof FormData;
 }
 
-function buildHeaders({ headers = {}, hasBody = false, data, isFormData = false } = {}) {
+function buildHeaders({ headers = {}, hasBody = false, isFormData = false } = {}) {
     const csrfToken = getCsrfToken();
 
     const requestHeaders = {
@@ -28,7 +28,7 @@ function buildHeaders({ headers = {}, hasBody = false, data, isFormData = false 
 
     const hasContentType = Object.keys(requestHeaders).some((key) => key.toLowerCase() === 'content-type');
 
-    if (hasBody && !hasContentType && !isFormDataPayload(data)) {
+    if (hasBody && !hasContentType && !isFormData) {
         requestHeaders['Content-Type'] = 'application/json';
     }
 
@@ -49,7 +49,7 @@ export async function apiRequest(url, { method = 'GET', data, headers = {} } = {
     const response = await fetch(url, {
         method,
         credentials: 'same-origin',
-        headers: buildHeaders({ headers, hasBody: data !== undefined, data, isFormData }),
+        headers: buildHeaders({ headers, hasBody: data !== undefined, isFormData }),
         body: data !== undefined ? (isFormData ? data : JSON.stringify(data)) : undefined,
     });
 
