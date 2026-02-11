@@ -1,5 +1,4 @@
 import { Link } from '@inertiajs/react';
-import AppLogo from '@/Components/AppLogo';
 
 const baseButtonClass = 'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
 
@@ -42,7 +41,7 @@ export default function Toolbar({
                         <i className="fa-solid fa-arrow-left text-sm" aria-hidden="true" />
                         <span className="sr-only">Back to diagrams</span>
                     </Link>
-                    <AppLogo className="h-10 w-auto" />
+                    <img src="/images/logo.png" alt="App Logo" className="h-8 w-auto" />
                 </div>
 
                 <div className="flex items-center gap-x-2">
