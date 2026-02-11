@@ -1,6 +1,6 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toBlob, toPng } from 'html-to-image';
+import { toBlob } from 'html-to-image';
 import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
@@ -576,16 +576,13 @@ function DiagramEditorContent() {
         if (!el) return null;
 
         try {
-            const dataUrl = await toPng(el, {
+            const blob = await toBlob(el, {
                 backgroundColor: '#f8fafc',
                 cacheBust: true,
-                useCORS: true,
                 pixelRatio: 1.5,
                 style: { transform: 'none' },
             });
-
-            const res = await fetch(dataUrl);
-            return await res.blob();
+            return blob;
         } catch (generationError) {
             console.warn('Failed to generate diagram preview image:', generationError);
             if (isImageSecurityError(generationError)) {
@@ -642,30 +639,36 @@ function DiagramEditorContent() {
     };
 
     async function exportImage() {
-        const node = document.querySelector('.react-flow');
-
-        if (!node) {
+        const viewport = document.querySelector('.react-flow__viewport');
+        if (!viewport) {
             alert('Diagram not found');
             return;
         }
 
         try {
-            const blob = await toBlob(node, {
+            const clone = viewport.cloneNode(true);
+            clone.style.transform = 'translate(0px, 0px) scale(1)';
+            clone.style.background = '#f8fafc';
+
+            const wrapper = document.createElement('div');
+            wrapper.style.padding = '40px';
+            wrapper.style.background = '#f8fafc';
+            wrapper.appendChild(clone);
+
+            document.body.appendChild(wrapper);
+
+            const blob = await toBlob(wrapper, {
                 backgroundColor: '#f8fafc',
                 pixelRatio: 2,
                 cacheBust: true,
-                useCORS: true,
-                filter: (el) => {
-                    if (!el) return true;
-                    const cls = el.classList || [];
-
-                    if (cls.contains('react-flow__controls')) return false;
-                    if (cls.contains('react-flow__minimap')) return false;
-                    if (cls.contains('editor-toolbar')) return false;
-
-                    return true;
-                },
             });
+
+            document.body.removeChild(wrapper);
+
+            if (!blob) {
+                alert('Failed to export image.');
+                return;
+            }
 
             const url = URL.createObjectURL(blob);
 
@@ -678,7 +681,7 @@ function DiagramEditorContent() {
 
             URL.revokeObjectURL(url);
         } catch (error) {
-            console.error('Export failed:', error);
+            console.error('PNG export failed:', error);
             alert('PNG export failed.');
         }
     }
