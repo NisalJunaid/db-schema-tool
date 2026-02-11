@@ -34,6 +34,7 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('Diagrams/Editor', [
             'diagramId' => (string) $diagram->getKey(),
             'permissions' => [
+                'canView' => auth()->user()->can('view', $diagram),
                 'canEdit' => auth()->user()->can('edit', $diagram),
                 'canManageAccess' => auth()->user()->can('manageAccess', $diagram),
                 'canDelete' => auth()->user()->can('delete', $diagram),

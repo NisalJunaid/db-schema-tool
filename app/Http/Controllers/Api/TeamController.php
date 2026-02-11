@@ -90,7 +90,7 @@ class TeamController extends Controller
 
         $validated = $request->validate([
             'email' => ['required', 'email'],
-            'role' => ['required', Rule::in(['member', 'editor', 'admin'])],
+            'role' => ['required', Rule::in(['viewer', 'editor', 'admin'])],
             'diagram_ids' => ['nullable', 'array'],
             'diagram_ids.*' => [
                 'integer',
@@ -152,7 +152,7 @@ class TeamController extends Controller
                 'type' => 'diagram',
                 'team_id' => $team->id,
                 'diagram_id' => (int) $diagramId,
-                'role' => $validated['role'] === 'member' ? 'viewer' : $validated['role'],
+                'role' => $validated['role'],
                 'email_status' => 'pending',
             ]);
         }

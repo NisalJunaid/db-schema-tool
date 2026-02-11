@@ -77,14 +77,25 @@ export default function DiagramsIndex() {
     );
 
     const personalDiagrams = filtered
-        .filter((diagram) => `${diagram.owner_type}`.toLowerCase().includes('user'))
-        .map((diagram) => ({ ...diagram, owner_label: 'Personal' }));
+        .filter((diagram) => {
+            const ownerType = `${diagram.owner_type}`.toLowerCase();
+            return ownerType.includes('user') || Boolean(diagram.is_directly_shared);
+        })
+        .map((diagram) => ({
+            ...diagram,
+            owner_label: `${diagram.owner_type}`.toLowerCase().includes('user') ? 'Personal' : 'Shared with me',
+        }));
 
     const teamGroups = teams.map((team) => ({
         team,
         invitations: teamInvites.filter((invitation) => Number(invitation.team_id) === Number(team.id)),
         diagrams: filtered
-            .filter((diagram) => `${diagram.owner_type}`.toLowerCase().includes('team') && Number(diagram.owner_id) === Number(team.id))
+            .filter(
+                (diagram) =>
+                    `${diagram.owner_type}`.toLowerCase().includes('team')
+                    && Number(diagram.owner_id) === Number(team.id)
+                    && !diagram.is_directly_shared,
+            )
             .map((diagram) => ({ ...diagram, owner_label: team.name || 'Team' })),
     }));
 

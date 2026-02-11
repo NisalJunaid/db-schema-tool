@@ -53,7 +53,7 @@ export default function TeamShow() {
                                             }}
                                             className="rounded border px-2 py-1"
                                         >
-                                            <option value="member">member</option>
+                                            <option value="viewer">viewer</option>
                                             <option value="editor">editor</option>
                                             <option value="admin">admin</option>
                                         </select>
@@ -76,7 +76,7 @@ export default function TeamShow() {
                 open={showInvite}
                 onClose={() => setShowInvite(false)}
                 title="Invite Team Member"
-                roleOptions={['member', 'editor', 'admin']}
+                roleOptions={['viewer', 'editor', 'admin']}
                 diagrams={team?.diagrams ?? []}
                 includeDiagramSelect
                 onSubmit={async (payload) => {

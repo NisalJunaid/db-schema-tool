@@ -91,6 +91,7 @@ function DiagramEditorContent() {
     const canRedo = history.future.length > 0;
 
     const permissions = diagram?.permissions ?? pagePermissions ?? {};
+    const canView = Boolean(permissions.canView ?? true);
     const canEdit = Boolean(permissions.canEdit);
     const canManageAccess = Boolean(permissions.canManageAccess);
 
@@ -591,7 +592,12 @@ function DiagramEditorContent() {
         const formData = new FormData();
         formData.append('preview', blob, 'preview.png');
 
-        await api.post(`/api/v1/diagrams/${diagramId}/preview`, formData);
+        const response = await api.post(`/api/v1/diagrams/${diagramId}/preview`, formData);
+        const payload = response?.data ?? response;
+
+        if (payload?.preview_url) {
+            setDiagram((current) => (current ? { ...current, preview_url: payload.preview_url } : current));
+        }
     }
 
     function schedulePreviewUpload() {
@@ -629,6 +635,10 @@ function DiagramEditorContent() {
     const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
 
     if (loading) return <section className="flex h-screen items-center justify-center"><p className="text-sm text-slate-600">Loading diagram…</p></section>;
+
+    if (!canView) {
+        return <section className="flex h-screen items-center justify-center"><p className="text-sm text-slate-600">You do not have access to view this diagram.</p></section>;
+    }
 
     return (
         <>

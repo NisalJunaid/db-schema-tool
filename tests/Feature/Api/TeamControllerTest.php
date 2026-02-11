@@ -27,7 +27,7 @@ class TeamControllerTest extends TestCase
             'owner_user_id' => $otherUser->getKey(),
         ]);
 
-        $includedTeam->users()->attach($user->getKey(), ['role' => 'member']);
+        $includedTeam->users()->attach($user->getKey(), ['role' => 'viewer']);
         $excludedTeam->users()->attach($otherUser->getKey(), ['role' => 'owner']);
 
         Sanctum::actingAs($user);
@@ -40,7 +40,7 @@ class TeamControllerTest extends TestCase
             'id' => $includedTeam->getKey(),
             'name' => $includedTeam->name,
             'owner_user_id' => $includedTeam->owner_user_id,
-            'role' => 'member',
+            'role' => 'viewer',
         ]);
         $response->assertJsonMissing([
             'id' => $excludedTeam->getKey(),

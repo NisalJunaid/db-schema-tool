@@ -2,7 +2,7 @@ import DiagramActionsMenu from './DiagramActionsMenu';
 
 export default function DiagramCard({ diagram, onOpen, onRename, onToggleVisibility, onInvite, onManageAccess, onDelete }) {
     const previewUrl = diagram.preview_url || diagram.preview_path || diagram.preview_image;
-    const cacheKey = diagram.updated_at ? `?v=${new Date(diagram.updated_at).getTime()}` : '';
+    const cacheKey = diagram.updated_at ? `?v=${encodeURIComponent(diagram.updated_at)}` : '';
     const previewSrc = previewUrl ? `${previewUrl}${cacheKey}` : null;
 
     return (

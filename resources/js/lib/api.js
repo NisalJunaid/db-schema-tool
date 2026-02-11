@@ -8,7 +8,7 @@ function isFormDataPayload(data) {
     return typeof FormData !== 'undefined' && data instanceof FormData;
 }
 
-function buildHeaders({ headers = {}, hasBody = false, data } = {}) {
+function buildHeaders({ headers = {}, hasBody = false, data, isFormData = false } = {}) {
     const csrfToken = getCsrfToken();
 
     const requestHeaders = {
@@ -17,6 +17,14 @@ function buildHeaders({ headers = {}, hasBody = false, data } = {}) {
         ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
         ...headers,
     };
+
+    if (isFormData) {
+        for (const key of Object.keys(requestHeaders)) {
+            if (key.toLowerCase() === 'content-type') {
+                delete requestHeaders[key];
+            }
+        }
+    }
 
     const hasContentType = Object.keys(requestHeaders).some((key) => key.toLowerCase() === 'content-type');
 
@@ -41,7 +49,7 @@ export async function apiRequest(url, { method = 'GET', data, headers = {} } = {
     const response = await fetch(url, {
         method,
         credentials: 'same-origin',
-        headers: buildHeaders({ headers, hasBody: data !== undefined, data }),
+        headers: buildHeaders({ headers, hasBody: data !== undefined, data, isFormData }),
         body: data !== undefined ? (isFormData ? data : JSON.stringify(data)) : undefined,
     });
 

@@ -39,6 +39,7 @@ class DiagramPolicy
     {
         return $diagram->is_public
             || $this->isOwner($user, $diagram)
+            || $this->isOwnerTeamOwner($user, $diagram)
             || $this->belongsToOwnerTeam($user, $diagram)
             || $this->hasExplicitAccess($user, $diagram, ['viewer', 'editor', 'admin']);
     }
@@ -46,7 +47,8 @@ class DiagramPolicy
     public function edit(User $user, Diagram $diagram): bool
     {
         return $this->isOwner($user, $diagram)
-            || $this->hasOwnerTeamRole($user, $diagram, ['admin', 'owner'])
+            || $this->isOwnerTeamOwner($user, $diagram)
+            || $this->hasOwnerTeamRole($user, $diagram, ['editor', 'admin'])
             || $this->hasExplicitAccess($user, $diagram, ['editor', 'admin']);
     }
 
@@ -58,14 +60,16 @@ class DiagramPolicy
     public function delete(User $user, Diagram $diagram): bool
     {
         return $this->isOwner($user, $diagram)
-            || $this->hasOwnerTeamRole($user, $diagram, ['admin', 'owner'])
+            || $this->isOwnerTeamOwner($user, $diagram)
+            || $this->hasOwnerTeamRole($user, $diagram, ['admin'])
             || $this->hasExplicitAccess($user, $diagram, ['admin']);
     }
 
     public function manageAccess(User $user, Diagram $diagram): bool
     {
         return $this->isOwner($user, $diagram)
-            || $this->hasOwnerTeamRole($user, $diagram, ['admin', 'owner'])
+            || $this->isOwnerTeamOwner($user, $diagram)
+            || $this->hasOwnerTeamRole($user, $diagram, ['admin'])
             || $this->hasExplicitAccess($user, $diagram, ['admin']);
     }
 
@@ -79,6 +83,12 @@ class DiagramPolicy
     {
         return $diagram->owner instanceof Team
             && $user->teams()->whereKey($diagram->owner->getKey())->exists();
+    }
+
+    private function isOwnerTeamOwner(User $user, Diagram $diagram): bool
+    {
+        return $diagram->owner instanceof Team
+            && $user->isTeamOwner($diagram->owner);
     }
 
     private function hasOwnerTeamRole(User $user, Diagram $diagram, array $roles): bool
