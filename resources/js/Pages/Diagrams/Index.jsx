@@ -53,6 +53,24 @@ export default function DiagramsIndex() {
 
     useEffect(() => {
         load();
+
+        const handleWindowFocus = () => {
+            load();
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                load();
+            }
+        };
+
+        window.addEventListener('focus', handleWindowFocus);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener('focus', handleWindowFocus);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
     }, []);
 
     const filtered = useMemo(() => {
