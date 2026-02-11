@@ -3,13 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Mail\InvitationMail;
 use App\Models\Invitation;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
 
 class TeamController extends Controller
@@ -85,31 +83,33 @@ class TeamController extends Controller
         ]);
 
         $invitation = Invitation::create([
-            'email' => strtolower($validated['email']),
+            'email' => Invitation::normalizeEmail($validated['email']),
             'inviter_user_id' => $request->user()->id,
             'type' => 'team',
             'team_id' => $team->id,
             'role' => $validated['role'],
+            'email_status' => 'pending',
         ]);
 
         foreach (($validated['diagram_ids'] ?? []) as $diagramId) {
             Invitation::create([
-                'email' => strtolower($validated['email']),
+                'email' => Invitation::normalizeEmail($validated['email']),
                 'inviter_user_id' => $request->user()->id,
                 'type' => 'diagram',
                 'team_id' => $team->id,
                 'diagram_id' => (int) $diagramId,
                 'role' => $validated['role'] === 'member' ? 'viewer' : $validated['role'],
+                'email_status' => 'pending',
             ]);
         }
 
         $invitation->load(['inviter:id,name,email', 'team:id,name']);
-        Mail::to($invitation->email)->send(new InvitationMail($invitation));
+        InvitationController::sendInvitationMail($invitation);
 
-        $existingUser = User::query()->where('email', strtolower($validated['email']))->exists();
+        $existingUser = User::query()->whereRaw('LOWER(TRIM(email)) = ?', [Invitation::normalizeEmail($validated['email'])])->exists();
 
         return response()->json([
-            'message' => 'Invitation sent successfully.',
+            'message' => 'Invite created successfully.',
             'registered_user' => $existingUser,
             'invitation' => $invitation,
         ], 201);

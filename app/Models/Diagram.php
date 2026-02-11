@@ -24,6 +24,7 @@ class Diagram extends Model
         'viewport',
         'is_public',
         'preview_image',
+        'preview_path',
     ];
 
     /**

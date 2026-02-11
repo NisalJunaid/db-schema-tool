@@ -4,7 +4,11 @@ function getCsrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
-function buildHeaders({ headers = {}, hasBody = false }) {
+function isFormDataPayload(data) {
+    return typeof FormData !== 'undefined' && data instanceof FormData;
+}
+
+function buildHeaders({ headers = {}, hasBody = false, data } = {}) {
     const csrfToken = getCsrfToken();
 
     const requestHeaders = {
@@ -16,7 +20,7 @@ function buildHeaders({ headers = {}, hasBody = false }) {
 
     const hasContentType = Object.keys(requestHeaders).some((key) => key.toLowerCase() === 'content-type');
 
-    if (hasBody && !hasContentType) {
+    if (hasBody && !hasContentType && !isFormDataPayload(data)) {
         requestHeaders['Content-Type'] = 'application/json';
     }
 
@@ -32,11 +36,13 @@ async function parseResponse(response) {
 }
 
 export async function apiRequest(url, { method = 'GET', data, headers = {} } = {}) {
+    const isFormData = isFormDataPayload(data);
+
     const response = await fetch(url, {
         method,
         credentials: 'same-origin',
-        headers: buildHeaders({ headers, hasBody: data !== undefined }),
-        body: data !== undefined ? JSON.stringify(data) : undefined,
+        headers: buildHeaders({ headers, hasBody: data !== undefined, data }),
+        body: data !== undefined ? (isFormData ? data : JSON.stringify(data)) : undefined,
     });
 
     const payload = await parseResponse(response);
@@ -55,6 +61,7 @@ export async function apiRequest(url, { method = 'GET', data, headers = {} } = {
 export const api = {
     get: (url, options = {}) => apiRequest(url, { ...options, method: 'GET' }),
     post: (url, data, options = {}) => apiRequest(url, { ...options, method: 'POST', data }),
+    postForm: (url, data, options = {}) => apiRequest(url, { ...options, method: 'POST', data }),
     patch: (url, data, options = {}) => apiRequest(url, { ...options, method: 'PATCH', data }),
     delete: (url, options = {}) => apiRequest(url, { ...options, method: 'DELETE' }),
 };

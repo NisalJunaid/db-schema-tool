@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Invitation;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -37,6 +38,13 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'status' => fn () => $request->session()->get('status'),
             ],
+            'pendingInvitations' => fn () => $request->user()
+                ? Invitation::query()
+                    ->where('status', 'pending')
+                    ->where('expires_at', '>', now())
+                    ->whereRaw('LOWER(TRIM(email)) = ?', [Invitation::normalizeEmail($request->user()->email)])
+                    ->count()
+                : 0,
         ];
     }
 }

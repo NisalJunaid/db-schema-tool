@@ -13,6 +13,8 @@ class Invitation extends Model
 
     protected $fillable = [
         'email',
+        'email_status',
+        'email_last_error',
         'inviter_user_id',
         'type',
         'team_id',
@@ -30,6 +32,8 @@ class Invitation extends Model
     protected static function booted(): void
     {
         static::creating(function (Invitation $invitation): void {
+            $invitation->email = self::normalizeEmail($invitation->email);
+
             if (! $invitation->token) {
                 $invitation->token = (string) Str::uuid();
             }
@@ -41,7 +45,22 @@ class Invitation extends Model
             if (! $invitation->expires_at) {
                 $invitation->expires_at = now()->addDays(7);
             }
+
+            if (! $invitation->email_status) {
+                $invitation->email_status = 'pending';
+            }
         });
+
+        static::updating(function (Invitation $invitation): void {
+            if ($invitation->isDirty('email')) {
+                $invitation->email = self::normalizeEmail($invitation->email);
+            }
+        });
+    }
+
+    public static function normalizeEmail(?string $email): string
+    {
+        return strtolower(trim((string) $email));
     }
 
     public function inviter(): BelongsTo
