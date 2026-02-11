@@ -37,6 +37,10 @@ class Diagram extends Model
         'is_public' => 'boolean',
     ];
 
+    protected $appends = [
+        'preview_url',
+    ];
+
     public function owner(): MorphTo
     {
         return $this->morphTo();
@@ -55,5 +59,14 @@ class Diagram extends Model
     public function accessEntries(): HasMany
     {
         return $this->hasMany(DiagramAccess::class);
+    }
+
+    public function getPreviewUrlAttribute(): ?string
+    {
+        if (! $this->preview_path) {
+            return null;
+        }
+
+        return asset('storage/'.$this->preview_path);
     }
 }

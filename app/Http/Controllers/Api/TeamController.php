@@ -60,6 +60,7 @@ class TeamController extends Controller
     public function show(Request $request, Team $team): JsonResponse
     {
         $this->authorize('view', $team);
+        $this->authorize('viewMembers', $team);
 
         $team->load(['owner:id,name,email', 'users:id,name,email', 'diagrams:id,name,owner_id,owner_type']);
 
@@ -85,7 +86,7 @@ class TeamController extends Controller
 
     public function invite(Request $request, Team $team): JsonResponse
     {
-        $this->authorize('manageMembers', $team);
+        $this->authorize('manageTeam', $team);
 
         $validated = $request->validate([
             'email' => ['required', 'email'],

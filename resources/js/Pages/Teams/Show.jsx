@@ -27,7 +27,7 @@ export default function TeamShow() {
                         <h1 className="text-xl font-semibold">{team?.name}</h1>
                         <p className="text-sm text-slate-600">Owner: {team?.owner?.name}</p>
                     </div>
-                    {team?.permissions?.canManageMembers && (
+                    {team?.permissions?.canManageTeam && (
                         <button type="button" onClick={() => setShowInvite(true)} className="rounded bg-indigo-600 px-3 py-2 text-sm text-white">Invite Member</button>
                     )}
                 </div>
@@ -35,7 +35,7 @@ export default function TeamShow() {
                 <table className="mt-6 w-full text-sm">
                     <thead>
                         <tr className="text-left text-slate-500">
-                            <th>Name</th><th>Email</th><th>Role</th><th>Actions</th>
+                            <th>Name</th><th>Email</th><th>Role</th>{team?.permissions?.canManageTeam && <th>Actions</th>}
                         </tr>
                     </thead>
                     <tbody>
@@ -44,25 +44,28 @@ export default function TeamShow() {
                                 <td className="py-2">{member.name}</td>
                                 <td>{member.email}</td>
                                 <td>
-                                    <select
-                                        disabled={!team?.permissions?.canManageMembers}
-                                        value={member.role}
-                                        onChange={async (e) => {
-                                            await api.patch(`/api/v1/teams/${teamId}/members/${member.id}`, { role: e.target.value });
-                                            loadTeam();
-                                        }}
-                                        className="rounded border px-2 py-1"
-                                    >
-                                        <option value="member">member</option>
-                                        <option value="editor">editor</option>
-                                        <option value="admin">admin</option>
-                                    </select>
-                                </td>
-                                <td>
-                                    {team?.permissions?.canManageMembers && (
-                                        <button type="button" onClick={async () => { await api.delete(`/api/v1/teams/${teamId}/members/${member.id}`); loadTeam(); }} className="text-red-600">Remove</button>
+                                    {team?.permissions?.canManageTeam ? (
+                                        <select
+                                            value={member.role}
+                                            onChange={async (e) => {
+                                                await api.patch(`/api/v1/teams/${teamId}/members/${member.id}`, { role: e.target.value });
+                                                loadTeam();
+                                            }}
+                                            className="rounded border px-2 py-1"
+                                        >
+                                            <option value="member">member</option>
+                                            <option value="editor">editor</option>
+                                            <option value="admin">admin</option>
+                                        </select>
+                                    ) : (
+                                        <span className="rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{member.role}</span>
                                     )}
                                 </td>
+                                {team?.permissions?.canManageTeam && (
+                                    <td>
+                                        <button type="button" onClick={async () => { await api.delete(`/api/v1/teams/${teamId}/members/${member.id}`); loadTeam(); }} className="text-red-600">Remove</button>
+                                    </td>
+                                )}
                             </tr>
                         ))}
                     </tbody>
