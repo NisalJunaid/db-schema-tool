@@ -13,18 +13,10 @@ const textVAlignClassMap = {
 };
 
 const HANDLE_POINTS = [
-    { key: 't-25', side: Position.Top, style: { left: '25%', top: 0, transform: 'translate(-50%, -50%)' } },
-    { key: 't-50', side: Position.Top, style: { left: '50%', top: 0, transform: 'translate(-50%, -50%)' } },
-    { key: 't-75', side: Position.Top, style: { left: '75%', top: 0, transform: 'translate(-50%, -50%)' } },
-    { key: 'r-25', side: Position.Right, style: { right: 0, top: '25%', transform: 'translate(50%, -50%)' } },
-    { key: 'r-50', side: Position.Right, style: { right: 0, top: '50%', transform: 'translate(50%, -50%)' } },
-    { key: 'r-75', side: Position.Right, style: { right: 0, top: '75%', transform: 'translate(50%, -50%)' } },
-    { key: 'b-25', side: Position.Bottom, style: { left: '25%', bottom: 0, transform: 'translate(-50%, 50%)' } },
-    { key: 'b-50', side: Position.Bottom, style: { left: '50%', bottom: 0, transform: 'translate(-50%, 50%)' } },
-    { key: 'b-75', side: Position.Bottom, style: { left: '75%', bottom: 0, transform: 'translate(-50%, 50%)' } },
-    { key: 'l-25', side: Position.Left, style: { left: 0, top: '25%', transform: 'translate(-50%, -50%)' } },
-    { key: 'l-50', side: Position.Left, style: { left: 0, top: '50%', transform: 'translate(-50%, -50%)' } },
-    { key: 'l-75', side: Position.Left, style: { left: 0, top: '75%', transform: 'translate(-50%, -50%)' } },
+    { key: 'top', side: Position.Top, style: { left: '50%', top: 0, transform: 'translate(-50%, -50%)' } },
+    { key: 'right', side: Position.Right, style: { right: 0, top: '50%', transform: 'translate(50%, -50%)' } },
+    { key: 'bottom', side: Position.Bottom, style: { left: '50%', bottom: 0, transform: 'translate(-50%, 50%)' } },
+    { key: 'left', side: Position.Left, style: { left: 0, top: '50%', transform: 'translate(-50%, -50%)' } },
 ];
 
 const toStrokeDashArray = (strokeStyle) => {
@@ -92,6 +84,18 @@ function ShapeSvg({ shape, fill, stroke, strokeWidth, strokeStyle, opacity, shad
 
 export default function FlowShapeNode({ id, data, selected }) {
     const shape = data?.shapeType ?? data?.shape ?? 'rect';
+    const showHoverHandles = Boolean(data?.showHoverHandles);
+    const showHandles = selected || showHoverHandles;
+    const handleOpacity = selected ? 1 : (showHoverHandles ? 0.3 : 0);
+    const handleStyle = {
+        width: 10,
+        height: 10,
+        border: '2px solid #475569',
+        backgroundColor: '#ffffff',
+        opacity: handleOpacity,
+        pointerEvents: showHandles ? 'auto' : 'none',
+        transition: 'opacity 120ms ease',
+    };
 
     const updateLabel = (nextLabel) => {
         const trimmed = (nextLabel ?? '').trim();
@@ -106,11 +110,23 @@ export default function FlowShapeNode({ id, data, selected }) {
                 minHeight={40}
                 onResizeEnd={() => data?.onResizeEnd?.()}
             />
-            {HANDLE_POINTS.map((handle) => (
-                <Handle key={`target-${handle.key}`} id={`target-${handle.key}`} type="target" position={handle.side} style={handle.style} />
+            {showHandles && HANDLE_POINTS.map((handle) => (
+                <Handle
+                    key={`target-${handle.key}`}
+                    id={`target-${handle.key}`}
+                    type="target"
+                    position={handle.side}
+                    style={{ ...handle.style, ...handleStyle }}
+                />
             ))}
-            {HANDLE_POINTS.map((handle) => (
-                <Handle key={`source-${handle.key}`} id={`source-${handle.key}`} type="source" position={handle.side} style={handle.style} />
+            {showHandles && HANDLE_POINTS.map((handle) => (
+                <Handle
+                    key={`source-${handle.key}`}
+                    id={`source-${handle.key}`}
+                    type="source"
+                    position={handle.side}
+                    style={{ ...handle.style, ...handleStyle }}
+                />
             ))}
             <div className={`relative h-full w-full ${selected ? 'ring-2 ring-indigo-300' : ''}`}>
                 <ShapeSvg
