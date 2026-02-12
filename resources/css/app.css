@@ -29,3 +29,20 @@
 }
 
 .cursor-tool { position: fixed; pointer-events: none; }
+
+.react-flow-wrapper.tool-draw .react-flow__pane,
+.react-flow-wrapper.tool-pen .react-flow__pane {
+    cursor: crosshair !important;
+}
+
+.react-flow-wrapper.tool-pan .react-flow__pane {
+    cursor: grab !important;
+}
+
+.react-flow-wrapper.tool-pan.is-panning .react-flow__pane {
+    cursor: grabbing !important;
+}
+
+.react-flow-wrapper.tool-select .react-flow__pane {
+    cursor: default !important;
+}

@@ -20,14 +20,22 @@ export default function DoodleLayer({
     if (!visible) return null;
 
     return (
-        <div
-            className={`absolute inset-0 z-20 ${enabled ? 'pointer-events-auto' : 'pointer-events-none'}`}
-            onPointerDown={enabled ? onPointerDown : undefined}
-            onPointerMove={enabled ? onPointerMove : undefined}
-            onPointerUp={enabled ? onPointerUp : undefined}
-            onPointerLeave={enabled ? (onPointerLeave ?? onPointerUp) : undefined}
-        >
+        <div className="pointer-events-none absolute inset-0 z-20">
             <svg className="absolute inset-0 h-full w-full">
+                {enabled && (
+                    <rect
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
+                        fill="transparent"
+                        pointerEvents="all"
+                        onPointerDown={onPointerDown}
+                        onPointerMove={onPointerMove}
+                        onPointerUp={onPointerUp}
+                        onPointerLeave={onPointerLeave ?? onPointerUp}
+                    />
+                )}
                 {rendered.map((doodle) => {
                     const width = Number(doodle.strokeWidth ?? 2.5);
                     const selected = doodle.id === selectedId;

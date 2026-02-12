@@ -23,7 +23,7 @@ export default function FlowShapeNode({ id, data, selected }) {
 
     return (
         <>
-            <NodeResizer isVisible={selected && data?.editMode} minWidth={60} minHeight={40} />
+            <NodeResizer isVisible={selected && data?.editMode && data?.activeTool === 'select'} minWidth={60} minHeight={40} />
             <Handle type="target" position={Position.Top} />
             <Handle type="target" position={Position.Left} />
             <Handle type="source" position={Position.Right} />
