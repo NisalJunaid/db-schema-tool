@@ -679,11 +679,7 @@ function DiagramEditorContent() {
 
         if (!hasMoved) {
             const size = DEFAULT_SHAPE_SIZES[tool] ?? DEFAULT_SHAPE_SIZES.rect;
-            const centeredPosition = {
-                x: start.x - (size.width / 2),
-                y: start.y - (size.height / 2),
-            };
-            const clickedNode = createFlowNode(tool, centeredPosition, size, toolStyle);
+            const clickedNode = createFlowNode(tool, start, size, toolStyle);
             selectedId = clickedNode.id;
             nextNodes = [...flowNodes, clickedNode];
             setFlowNodes(nextNodes);
@@ -750,7 +746,7 @@ function DiagramEditorContent() {
 
         if (!movementState.hasMoved && movedBeyondThreshold) {
             const draftNode = {
-                ...createFlowNode(movementState.tool, start, { width: 1, height: 1 }, toolStyle),
+                ...createFlowNode(movementState.tool, start, { width: 10, height: 10 }, toolStyle),
                 id: movementState.nodeId,
             };
             drawingRef.current = { ...movementState, hasMoved: true };
