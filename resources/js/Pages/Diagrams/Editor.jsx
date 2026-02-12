@@ -1716,7 +1716,7 @@ function DiagramEditorContent() {
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
                             {showMiniMap && <MiniMap position="bottom-right" pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
-                            <Controls position="bottom-left" showInteractive={false}>
+                            <Controls position="bottom-left" showInteractive={false} className="z-50">
                                 {canEdit && (
                                     <ControlButton onClick={() => setEditMode((current) => !current)} title="Toggle edit mode">
                                         <i className={`fa-solid fa-pen-to-square ${editMode ? 'text-indigo-600' : 'text-slate-600'}`} />
@@ -1730,7 +1730,7 @@ function DiagramEditorContent() {
 
                         {(editorMode === 'flow' || editorMode === 'mind') && (
                             <DoodleLayer
-                                enabled={canEdit && editMode && (activeTool === 'pen' || activeTool === 'select')}
+                                enabled={canEdit && editMode && activeTool === 'pen'}
                                 visible={showInk}
                                 doodles={activeDoodles}
                                 activeStroke={activeStroke}

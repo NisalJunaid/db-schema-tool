@@ -21,7 +21,7 @@ export default function DoodleLayer({
 
     return (
         <div
-            className={`absolute inset-0 z-30 ${enabled ? 'pointer-events-auto' : 'pointer-events-none'}`}
+            className={`absolute inset-0 z-20 ${enabled ? 'pointer-events-auto' : 'pointer-events-none'}`}
             onPointerDown={enabled ? onPointerDown : undefined}
             onPointerMove={enabled ? onPointerMove : undefined}
             onPointerUp={enabled ? onPointerUp : undefined}
