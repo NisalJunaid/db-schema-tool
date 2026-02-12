@@ -36,6 +36,6 @@ class DiagramTableController extends Controller
 
         $diagramTable->delete();
 
-        return response()->noContent();
+        return response()->json(null, 204);
     }
 }
