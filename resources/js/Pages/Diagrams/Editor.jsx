@@ -17,8 +17,10 @@ import ShareAccessModal from '@/Components/Diagrams/ShareAccessModal';
 import EditorErrorBoundary from '@/Components/EditorErrorBoundary';
 import FlowSidebar from '@/Components/CanvasFlow/FlowSidebar';
 import FlowToolbar from '@/Components/CanvasFlow/FlowToolbar';
+import FloatingShapeToolbar from '@/Components/CanvasFlow/FloatingShapeToolbar';
 import { flowNodeTypes } from '@/Components/CanvasFlow/flowTypes';
 import { createFlowNode } from '@/Components/CanvasFlow/flowDefaults';
+import { SHAPE_REGISTRY, SHAPE_KEYS } from '@/Components/CanvasFlow/shapeRegistry';
 import MindSidebar from '@/Components/CanvasMind/MindSidebar';
 import FloatingToolbox from '@/Components/CanvasUI/FloatingToolbox';
 import SelectionInspector from '@/Components/CanvasUI/SelectionInspector';
@@ -37,14 +39,11 @@ const isImageSecurityError = (error) => error?.name === 'SecurityError' || /tain
 const EXCLUDED_CAPTURE_CLASSES = new Set(['react-flow__controls', 'react-flow__minimap']);
 
 const FLOW_DEFAULT_NODE_SIZES = {
-    rect: { width: 240, height: 140 },
-    rounded: { width: 240, height: 140 },
-    diamond: { width: 220, height: 160 },
-    circle: { width: 160, height: 160 },
+    ...Object.fromEntries(SHAPE_KEYS.map((shapeKey) => [shapeKey, SHAPE_REGISTRY[shapeKey].defaultSize])),
     text: { width: 220, height: 90 },
     sticky: { width: 240, height: 160 },
 };
-const FLOW_CLICK_CREATE_TOOLS = ['text', 'sticky', 'rect', 'rounded', 'diamond', 'circle'];
+const FLOW_CLICK_CREATE_TOOLS = ['text', 'sticky', ...SHAPE_KEYS];
 const FLOW_CONNECTOR_TOOL = 'connector';
 const FLOW_PAN_TOOL = 'pan';
 const FLOW_SELECT_TOOL = 'select';
@@ -1191,6 +1190,40 @@ function DiagramEditorContent() {
         setMindNodes((current) => current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...patch } } : node)));
     }, [canEdit, editMode]);
 
+    const updateSelectedFlowNode = useCallback((updates) => {
+        if (!selectedNodeId || !canEdit || !editMode) return;
+        const nextNodes = flowNodes.map((node) => (node.id === selectedNodeId ? { ...node, data: { ...node.data, ...updates } } : node));
+        setFlowNodes(nextNodes);
+        scheduleCanvasSave('flow', { nodes: nextNodes, edges: flowEdges, doodles: flowDoodles });
+    }, [canEdit, editMode, flowDoodles, flowEdges, flowNodes, scheduleCanvasSave, selectedNodeId]);
+
+    const duplicateSelectedFlowNode = useCallback(() => {
+        if (!selectedNodeId || !canEdit || !editMode) return;
+        const sourceNode = flowNodes.find((node) => node.id === selectedNodeId);
+        if (!sourceNode) return;
+        const clonedNode = {
+            ...sourceNode,
+            id: `flow-${crypto.randomUUID()}`,
+            position: { x: sourceNode.position.x + 40, y: sourceNode.position.y + 40 },
+            selected: false,
+        };
+        const nextNodes = [...flowNodes, clonedNode];
+        commitFlowState(nextNodes, flowEdges);
+        scheduleCanvasSave('flow', { nodes: nextNodes, edges: flowEdges, doodles: flowDoodles });
+        setSelectedNodeId(clonedNode.id);
+    }, [canEdit, commitFlowState, editMode, flowDoodles, flowEdges, flowNodes, scheduleCanvasSave, selectedNodeId]);
+
+    const commentOnSelectedFlowNode = useCallback(() => {
+        if (!selectedNodeId || !canEdit || !editMode) return;
+        const nextNodes = flowNodes.map((node) => (
+            node.id === selectedNodeId
+                ? { ...node, data: { ...node.data, commentCount: (node.data?.commentCount ?? 0) + 1 } }
+                : node
+        ));
+        setFlowNodes(nextNodes);
+        scheduleCanvasSave('flow', { nodes: nextNodes, edges: flowEdges, doodles: flowDoodles });
+    }, [canEdit, editMode, flowDoodles, flowEdges, flowNodes, scheduleCanvasSave, selectedNodeId]);
+
     const addFlowNode = useCallback((nodeType, position = null) => {
         if (!canEdit || !editMode) return;
         const viewport = reactFlowRef.current?.getViewport?.() ?? { x: 0, y: 0, zoom: 1 };
@@ -1355,19 +1388,29 @@ function DiagramEditorContent() {
                 activeTool,
                 onLabelChange: editorMode === 'flow' ? commitFlowLabel : commitMindLabel,
                 onToggleCollapse: handleToggleMindCollapse,
+                onResizeEnd: editorMode === 'flow'
+                    ? () => commitFlowState(latestFlowStateRef.current.nodes, latestFlowStateRef.current.edges)
+                    : undefined,
             },
         }));
 
         if (editorMode !== 'flow' || !hoverPreview) return mappedNodes;
 
+        const isTextPreview = hoverPreview.type === 'text';
+        const isStickyPreview = hoverPreview.type === 'sticky';
         const previewNode = {
             id: '__preview__',
-            type: hoverPreview.type,
+            type: isTextPreview ? 'flowText' : (isStickyPreview ? 'flowSticky' : 'flowShape'),
             position: hoverPreview.position,
             draggable: false,
             selectable: false,
             connectable: false,
-            data: { preview: true },
+            data: {
+                preview: true,
+                shapeType: hoverPreview.type,
+                label: '',
+                text: '',
+            },
             style: {
                 width: hoverPreview.size.width,
                 height: hoverPreview.size.height,
@@ -1377,7 +1420,7 @@ function DiagramEditorContent() {
         };
 
         return [...mappedNodes, previewNode];
-    }, [activeNodes, activeTool, canEdit, commitFlowLabel, commitMindLabel, editMode, editorMode, handleToggleMindCollapse, hoverPreview, showInk]);
+    }, [activeNodes, activeTool, canEdit, commitFlowLabel, commitFlowState, commitMindLabel, editMode, editorMode, handleToggleMindCollapse, hoverPreview, showInk]);
 
     const submitAddTable = async (event) => {
         event.preventDefault();
@@ -1668,6 +1711,17 @@ function DiagramEditorContent() {
                                 }}
                             />
                         )}
+                        {editorMode === 'flow' && canEdit && editMode && selectedNodeId && (
+                            <FloatingShapeToolbar
+                                selectedNode={flowNodes.find((node) => node.id === selectedNodeId) ?? null}
+                                reactFlowInstance={reactFlowRef.current}
+                                onUpdateNode={updateSelectedFlowNode}
+                                onDuplicate={duplicateSelectedFlowNode}
+                                onDelete={deleteSelectedNode}
+                                onComment={commentOnSelectedFlowNode}
+                                onClose={() => setSelectedNodeId(null)}
+                            />
+                        )}
                         {editorMode === 'mind' && (
                             <FloatingToolbox
                                 mode="mind"
@@ -1783,7 +1837,7 @@ function DiagramEditorContent() {
                                 onPointerLeave={handleDoodlePointerUp}
                             />
                         )}
-                        {editorMode !== 'db' && editMode && (selectedNodeId || selectedEdgeId) && (
+                        {editorMode !== 'db' && editMode && (selectedEdgeId || (editorMode === 'mind' && selectedNodeId)) && (
                             <SelectionInspector
                                 mode={editorMode}
                                 selectedNode={(editorMode === 'flow' ? flowNodes : mindNodes).find((n) => n.id === selectedNodeId) ?? null}

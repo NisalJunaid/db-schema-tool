@@ -1,22 +1,70 @@
 import { Handle, NodeResizer, Position } from 'reactflow';
 
-const radiusByShape = {
-    rect: 'rounded-md',
-    roundRect: 'rounded-2xl',
-    ellipse: 'rounded-full',
-};
-
 const textSizeClassMap = {
     sm: 'text-xs',
     md: 'text-sm',
     lg: 'text-lg',
 };
 
+const toStrokeDashArray = (strokeStyle) => {
+    if (strokeStyle === 'dotted') return '2 6';
+    if (strokeStyle === 'dashed') return '10 8';
+    return 'none';
+};
+
+const starPoints = '50,4 61,36 95,36 67,56 77,90 50,70 23,90 33,56 5,36 39,36';
+const hexagonPoints = '25,6 75,6 96,50 75,94 25,94 4,50';
+const diamondPoints = '50,4 96,50 50,96 4,50';
+
+function ShapeSvg({ shape, fill, stroke, strokeWidth, strokeStyle, opacity, shadowEnabled, shadowId }) {
+    const dashArray = toStrokeDashArray(strokeStyle);
+    const commonProps = {
+        fill,
+        stroke,
+        strokeWidth,
+        strokeDasharray: dashArray,
+        vectorEffect: 'non-scaling-stroke',
+    };
+
+    return (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full" style={{ opacity }}>
+            {shadowEnabled && (
+                <defs>
+                    <filter id={shadowId} x="-20%" y="-20%" width="140%" height="140%">
+                        <feDropShadow dx="0" dy="3" stdDeviation="2" floodColor="#0f172a" floodOpacity="0.18" />
+                    </filter>
+                </defs>
+            )}
+            <g filter={shadowEnabled ? `url(#${shadowId})` : undefined}>
+                {shape === 'rounded' && <rect x="2" y="2" width="96" height="96" rx="18" ry="18" {...commonProps} />}
+                {shape === 'circle' && <ellipse cx="50" cy="50" rx="47" ry="47" {...commonProps} />}
+                {shape === 'diamond' && <polygon points={diamondPoints} {...commonProps} />}
+                {shape === 'parallelogram' && <polygon points="20,4 98,4 80,96 2,96" {...commonProps} />}
+                {shape === 'cylinder' && (
+                    <>
+                        <path d="M10 16 C10 9, 90 9, 90 16 L90 84 C90 91, 10 91, 10 84 Z" {...commonProps} />
+                        <ellipse cx="50" cy="16" rx="40" ry="12" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dashArray} vectorEffect="non-scaling-stroke" />
+                        <path d="M10 84 C10 91, 90 91, 90 84" fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dashArray} vectorEffect="non-scaling-stroke" />
+                    </>
+                )}
+                {shape === 'document' && (
+                    <path d="M10 2 H70 L90 24 V98 H10 Z M70 2 V24 H90" {...commonProps} />
+                )}
+                {shape === 'cloud' && (
+                    <path d="M24 78 H75 C88 78 95 68 95 58 C95 48 88 40 78 40 C77 27 67 18 54 18 C43 18 33 25 30 35 C18 34 8 44 8 56 C8 68 15 78 24 78 Z" {...commonProps} />
+                )}
+                {shape === 'star' && <polygon points={starPoints} {...commonProps} />}
+                {shape === 'hexagon' && <polygon points={hexagonPoints} {...commonProps} />}
+                {!['rounded', 'circle', 'diamond', 'parallelogram', 'cylinder', 'document', 'cloud', 'star', 'hexagon'].includes(shape) && (
+                    <rect x="2" y="2" width="96" height="96" {...commonProps} />
+                )}
+            </g>
+        </svg>
+    );
+}
+
 export default function FlowShapeNode({ id, data, selected }) {
     const shape = data?.shapeType ?? data?.shape ?? 'rect';
-    const isDiamond = shape === 'diamond';
-    const isParallelogram = shape === 'parallelogram';
-    const isCylinder = shape === 'cylinder';
 
     const updateLabel = (nextLabel) => {
         const trimmed = (nextLabel ?? '').trim();
@@ -25,28 +73,33 @@ export default function FlowShapeNode({ id, data, selected }) {
 
     return (
         <>
-            <NodeResizer isVisible={selected && data?.editMode && data?.activeTool === 'select'} minWidth={60} minHeight={40} />
+            <NodeResizer
+                isVisible={selected && data?.editMode}
+                minWidth={60}
+                minHeight={40}
+                onResizeEnd={() => data?.onResizeEnd?.()}
+            />
             <Handle type="target" position={Position.Top} />
             <Handle type="target" position={Position.Left} />
             <Handle type="source" position={Position.Right} />
             <Handle type="source" position={Position.Bottom} />
-            <div
-                className={`h-full w-full border px-3 py-2 shadow-sm ${selected ? 'ring-2 ring-indigo-300' : ''} ${radiusByShape[shape] ?? 'rounded-xl'}`}
-                style={{
-                    backgroundColor: data?.fill ?? data?.fillColor ?? '#fff',
-                    borderColor: data?.stroke ?? data?.borderColor ?? '#475569',
-                    borderStyle: data?.borderStyle ?? 'solid',
-                    transform: isDiamond ? 'rotate(45deg)' : (isParallelogram ? 'skew(-18deg)' : undefined),
-                    borderRadius: isCylinder ? '999px / 22px' : undefined,
-                }}
-            >
+            <div className={`relative h-full w-full ${selected ? 'ring-2 ring-indigo-300' : ''}`}>
+                <ShapeSvg
+                    shape={shape}
+                    fill={data?.fill ?? '#ffffff'}
+                    stroke={data?.stroke ?? '#475569'}
+                    strokeWidth={data?.strokeWidth ?? 2}
+                    strokeStyle={data?.strokeStyle ?? data?.borderStyle ?? 'solid'}
+                    opacity={data?.opacity ?? 1}
+                    shadowEnabled={Boolean(data?.shadow)}
+                    shadowId={`shape-shadow-${id}`}
+                />
                 <div
                     contentEditable={data?.editMode}
                     suppressContentEditableWarning
                     onBlur={(event) => updateLabel(event.target.innerText)}
                     onMouseDown={(event) => event.stopPropagation()}
-                    className={`nodrag nopan outline-none text-center text-slate-700 ${textSizeClassMap[data?.textSize ?? data?.fontSize ?? 'md'] ?? 'text-sm'}`}
-                    style={{ transform: isDiamond ? 'rotate(-45deg)' : (isParallelogram ? 'skew(18deg)' : undefined) }}
+                    className={`nodrag nopan absolute inset-0 flex items-center justify-center px-3 text-center text-slate-700 outline-none ${textSizeClassMap[data?.textSize ?? data?.fontSize ?? 'md'] ?? 'text-sm'}`}
                 >
                     {data?.label ?? data?.text ?? 'Shape'}
                 </div>
