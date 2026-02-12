@@ -684,14 +684,25 @@ function DiagramEditorContent() {
     const handlePaneMouseDown = useCallback((event) => {
         if (editorMode !== 'flow') return;
 
+        console.log('Tool:', activeTool, 'EditMode:', editMode, 'CanEdit:', canEdit);
+
         if (isPanTool) {
             setIsPanningCanvas(true);
             return;
         }
 
-        if (!(canEdit && editMode) || !reactFlowRef.current) return;
-        if (!event.target?.closest?.('.react-flow__pane')) return;
-        if (event.target?.closest?.('.react-flow__node, .react-flow__edge, .react-flow__controls, .react-flow__minimap')) return;
+        if (!canEdit) return;
+
+        if (!editMode) {
+            setEditMode(true);
+        }
+
+        if (!reactFlowRef.current) return;
+
+        if (event.target?.closest?.('.react-flow__node')) return;
+        if (event.target?.closest?.('.react-flow__edge')) return;
+        if (event.target?.closest?.('.react-flow__controls')) return;
+        if (event.target?.closest?.('.react-flow__minimap')) return;
 
         if (FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) {
             const position = toFlowPoint(event.clientX, event.clientY);
@@ -1663,6 +1674,7 @@ function DiagramEditorContent() {
                             />
                         )}
                         <ReactFlow
+                            ref={reactFlowRef}
                             nodes={Array.isArray(renderedNodes) ? renderedNodes : []}
                             edges={Array.isArray(activeEdges) ? activeEdges : []}
                             nodeTypes={nodeTypes}
