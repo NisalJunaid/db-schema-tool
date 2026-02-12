@@ -709,14 +709,20 @@ function DiagramEditorContent() {
     }, [activeTool, isDrawingShape, isPanning, toFlowPoint]);
 
     const handlePaneMouseUp = useCallback(() => {
-        if (isPanning) setIsPanning(false);
+        if (activeTool === 'pan') {
+            setIsPanning(false);
+            return;
+        }
         finalizeFlowDrawing();
-    }, [finalizeFlowDrawing, isPanning]);
+    }, [activeTool, finalizeFlowDrawing]);
 
     const handlePaneMouseLeave = useCallback(() => {
-        if (isPanning) setIsPanning(false);
+        if (activeTool === 'pan') {
+            setIsPanning(false);
+            return;
+        }
         finalizeFlowDrawing();
-    }, [finalizeFlowDrawing, isPanning]);
+    }, [activeTool, finalizeFlowDrawing]);
 
     const addMindSibling = useCallback(() => {
         if (!canEdit || !editMode || !selectedNodeId) return;
@@ -1313,69 +1319,38 @@ function DiagramEditorContent() {
         setIsDrawing(false);
     }, [activeTool]);
 
-    const isDrawingTool = useMemo(() => FLOW_DRAW_TOOLS.includes(activeTool), [activeTool]);
+    const isFlow = editorMode === 'flow';
+    const isDrawTool = editMode && isFlow && FLOW_DRAW_TOOLS.includes(activeTool);
+    const isPanTool = editMode && activeTool === 'pan';
+    const isSelectTool = editMode && activeTool === 'select';
+    const isConnectorTool = editMode && activeTool === 'connector';
 
     const flowInteractionProps = useMemo(() => {
-        if (!(canEdit && editMode)) {
+        if (!(canEdit && editMode) || !isFlow) {
             return {
                 panOnDrag: false,
                 nodesDraggable: false,
                 nodesConnectable: false,
                 elementsSelectable: false,
-            };
-        }
-
-        if (activeTool === 'pan') {
-            return {
-                panOnDrag: true,
-                nodesDraggable: false,
-                nodesConnectable: false,
-                elementsSelectable: false,
-            };
-        }
-
-        if (activeTool === 'connector') {
-            return {
-                panOnDrag: false,
-                nodesDraggable: false,
-                nodesConnectable: true,
-                elementsSelectable: true,
-            };
-        }
-
-        if (isDrawingTool) {
-            return {
-                panOnDrag: false,
-                nodesDraggable: false,
-                nodesConnectable: false,
-                elementsSelectable: false,
-            };
-        }
-
-        if (activeTool === 'select') {
-            return {
-                panOnDrag: false,
-                nodesDraggable: true,
-                nodesConnectable: false,
-                elementsSelectable: true,
             };
         }
 
         return {
-            panOnDrag: false,
-            nodesDraggable: false,
-            nodesConnectable: false,
-            elementsSelectable: false,
+            panOnDrag: isPanTool,
+            nodesDraggable: isSelectTool,
+            nodesConnectable: isConnectorTool,
+            elementsSelectable: isSelectTool || isConnectorTool,
         };
-    }, [activeTool, canEdit, editMode, isDrawingTool]);
+    }, [canEdit, editMode, isConnectorTool, isFlow, isPanTool, isSelectTool]);
 
-    const cursorClass = useMemo(() => {
-        if (editorMode !== 'flow') return 'cursor-default';
-        if (activeTool === 'pan') return isPanning ? 'cursor-grabbing' : 'cursor-grab';
-        if (isDrawingTool) return 'cursor-crosshair';
-        if (activeTool === 'connector') return 'cursor-crosshair';
-        return 'cursor-default';
-    }, [activeTool, editorMode, isDrawingTool, isPanning]);
+    const canvasCursor = useMemo(() => {
+        if (!editMode) return 'default';
+        if (activeTool === 'pan') return isPanning ? 'grabbing' : 'grab';
+        if (activeTool === 'pen') return 'crosshair';
+        if (isDrawTool) return 'crosshair';
+        if (activeTool === 'connector') return 'crosshair';
+        return 'default';
+    }, [activeTool, editMode, isDrawTool, isPanning]);
 
     const renderedNodes = useMemo(() => {
         if (editorMode === 'db') return Array.isArray(activeNodes) ? activeNodes : [];
@@ -1655,7 +1630,7 @@ function DiagramEditorContent() {
                         </div>
                     )}
 
-                    <div className={`relative m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${cursorClass}`}>
+                    <div className="relative m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" style={{ cursor: canvasCursor }}>
 
                         <FloatingToolbox
                             mode={editorMode}
@@ -1674,7 +1649,7 @@ function DiagramEditorContent() {
                             panOnDrag={editorMode === 'db' ? true : editorMode === 'flow' ? flowInteractionProps.panOnDrag : false}
                             nodesDraggable={editorMode === 'db' ? canEdit && editMode : editorMode === 'flow' ? flowInteractionProps.nodesDraggable : canEdit && editMode}
                             elementsSelectable={editorMode === 'db' ? true : editorMode === 'flow' ? flowInteractionProps.elementsSelectable : true}
-                            selectionOnDrag={activeTool === 'select'}
+                            selectionOnDrag={isSelectTool}
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
                             onNodesChange={onNodesChange}
