@@ -19,9 +19,8 @@ import FlowSidebar from '@/Components/CanvasFlow/FlowSidebar';
 import { flowNodeTypes } from '@/Components/CanvasFlow/flowTypes';
 import { createFlowNode } from '@/Components/CanvasFlow/flowDefaults';
 import MindSidebar from '@/Components/CanvasMind/MindSidebar';
-import FloatingToolbox from '@/Components/CanvasShared/FloatingToolbox';
-import DoodleLayer from '@/Components/CanvasShared/DoodleLayer';
-import SelectionToolbar from '@/Components/CanvasShared/SelectionToolbar';
+import FloatingToolbox from '@/Components/CanvasUI/FloatingToolbox';
+import SelectionInspector from '@/Components/CanvasUI/SelectionInspector';
 import { mindNodeTypes } from '@/Components/CanvasMind/mindTypes';
 import { collectDescendantIds } from '@/Components/CanvasMind/mindLayout';
 import { createMindChildNode, createMindRootNode } from '@/Components/CanvasMind/mindDefaults';
@@ -105,12 +104,14 @@ function DiagramEditorContent() {
     const [selectedColumnId, setSelectedColumnId] = useState(null);
     const [selectedNodeId, setSelectedNodeId] = useState(null);
     const [selectedEdgeId, setSelectedEdgeId] = useState(null);
-    const [selectedDoodleId, setSelectedDoodleId] = useState(null);
     const [showMiniMap, setShowMiniMap] = useState(true);
     const [showGrid, setShowGrid] = useState(true);
-    const [canvasTool, setCanvasTool] = useState('select');
+    const [activeTool, setActiveTool] = useState('select');
     const [toolStyle, setToolStyle] = useState({ fill: '#ffffff', stroke: '#475569', borderStyle: 'solid', textSize: 'md' });
-    const dragRef = useRef(null);
+    const [showInk, setShowInk] = useState(true);
+    const [isDrawingShape, setIsDrawingShape] = useState(false);
+    const drawingRef = useRef({ start: null, nodeId: null, type: null });
+    const [selectedDoodleId, setSelectedDoodleId] = useState(null);
     const [flowDoodles, setFlowDoodles] = useState(Array.isArray(initialDiagramPayload?.flow_state?.doodles) ? initialDiagramPayload.flow_state.doodles : []);
     const [mindDoodles, setMindDoodles] = useState(Array.isArray(initialDiagramPayload?.mind_state?.doodles) ? initialDiagramPayload.mind_state.doodles : []);
     const [doodlesVisible, setDoodlesVisible] = useState(true);
@@ -158,7 +159,7 @@ function DiagramEditorContent() {
         return map;
     }, [tables]);
 
-    const buildSnapshot = useCallback((sourceTables, sourceRelationships) => ({
+    const buildDbSnapshot = useCallback((sourceTables, sourceRelationships) => ({
         tables: cloneState(sourceTables),
         relationships: cloneState(sourceRelationships),
     }), []);
@@ -178,26 +179,26 @@ function DiagramEditorContent() {
 
     const commitEditorState = useCallback((nextTables, nextRelationships, previousTables = tables, previousRelationships = relationships) => {
         setHistory((current) => ({
-            past: [...current.past, buildSnapshot(previousTables, previousRelationships)],
-            present: buildSnapshot(nextTables, nextRelationships),
+            past: [...current.past, buildDbSnapshot(previousTables, previousRelationships)],
+            present: buildDbSnapshot(nextTables, nextRelationships),
             future: [],
         }));
         setTables(nextTables);
         setRelationships(nextRelationships);
-    }, [buildSnapshot, relationships, tables]);
+    }, [buildDbSnapshot, relationships, tables]);
 
     const undoHistory = useCallback(() => {
         if (editorMode === 'db') {
             setHistory((current) => {
                 if (!current.past.length) return current;
                 const previous = current.past[current.past.length - 1];
-                const futureHead = current.present ? [buildSnapshot(current.present.tables, current.present.relationships)] : [];
+                const futureHead = current.present ? [buildDbSnapshot(current.present.tables, current.present.relationships)] : [];
                 setTables(cloneState(previous.tables));
                 setRelationships(cloneState(previous.relationships));
                 setSelectedEdgeId(null);
                 return {
                     past: current.past.slice(0, -1),
-                    present: buildSnapshot(previous.tables, previous.relationships),
+                    present: buildDbSnapshot(previous.tables, previous.relationships),
                     future: [...futureHead, ...current.future],
                 };
             });
@@ -232,20 +233,20 @@ function DiagramEditorContent() {
                 future: [...futureHead, ...current.future],
             };
         });
-    }, [buildCanvasSnapshot, buildSnapshot, editorMode]);
+    }, [buildCanvasSnapshot, buildDbSnapshot, editorMode]);
 
     const redoHistory = useCallback(() => {
         if (editorMode === 'db') {
             setHistory((current) => {
                 if (!current.future.length) return current;
                 const [next, ...remainingFuture] = current.future;
-                const nextPast = current.present ? [...current.past, buildSnapshot(current.present.tables, current.present.relationships)] : current.past;
+                const nextPast = current.present ? [...current.past, buildDbSnapshot(current.present.tables, current.present.relationships)] : current.past;
                 setTables(cloneState(next.tables));
                 setRelationships(cloneState(next.relationships));
                 setSelectedEdgeId(null);
                 return {
                     past: nextPast,
-                    present: buildSnapshot(next.tables, next.relationships),
+                    present: buildDbSnapshot(next.tables, next.relationships),
                     future: remainingFuture,
                 };
             });
@@ -280,7 +281,7 @@ function DiagramEditorContent() {
                 future: remainingFuture,
             };
         });
-    }, [buildCanvasSnapshot, buildSnapshot, editorMode]);
+    }, [buildCanvasSnapshot, buildDbSnapshot, editorMode]);
 
     const handle401 = useCallback((message) => setError(message ?? `${SESSION_EXPIRED_MESSAGE} to continue editing.`), []);
 
@@ -338,7 +339,7 @@ function DiagramEditorContent() {
                 setMindEdges(loadedMindEdges);
                 setMindDoodles(Array.isArray(diagramPayload?.mind_state?.doodles) ? diagramPayload.mind_state.doodles : []);
             }
-            setHistory({ past: [], present: buildSnapshot(normalizedTables, relationshipRows), future: [] });
+            setHistory({ past: [], present: buildDbSnapshot(normalizedTables, relationshipRows), future: [] });
             setFlowHistory({ past: [], present: { nodes: cloneState(loadedFlowNodes), edges: cloneState(loadedFlowEdges) }, future: [] });
             setMindHistory({ past: [], present: { nodes: cloneState(loadedMindNodes), edges: cloneState(loadedMindEdges) }, future: [] });
         } catch (loadError) {
@@ -347,7 +348,7 @@ function DiagramEditorContent() {
         } finally {
             setLoading(false);
         }
-    }, [buildSnapshot, diagramId, handle401]);
+    }, [buildDbSnapshot, diagramId, handle401]);
 
     useEffect(() => {
         loadDiagram();
@@ -370,9 +371,16 @@ function DiagramEditorContent() {
 
     useEffect(() => {
         if (editorMode === 'db') return;
-        setCanvasTool('select');
+        setActiveTool('select');
     }, [editorMode]);
 
+
+    useEffect(() => {
+        if (editMode) return;
+        drawingRef.current = { start: null, nodeId: null, type: null };
+        setIsDrawingShape(false);
+        setActiveTool('select');
+    }, [editMode]);
     useEffect(() => () => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
         if (editModeNoticeTimerRef.current) clearTimeout(editModeNoticeTimerRef.current);
@@ -466,12 +474,12 @@ function DiagramEditorContent() {
             setSavingState('Autosaved');
         } catch (renameError) {
             setTables(previousTables);
-            setHistory((current) => ({ ...current, present: buildSnapshot(previousTables, relationships), past: current.past.slice(0, -1) }));
+            setHistory((current) => ({ ...current, present: buildDbSnapshot(previousTables, relationships), past: current.past.slice(0, -1) }));
             setSavingState('Error');
             if (renameError?.status === 401) return handle401();
             setError(renameError.message || 'Failed to rename table.');
         }
-    }, [buildSnapshot, canEdit, commitEditorState, editMode, handle401, relationships, schedulePreviewUpload, tables]);
+    }, [buildDbSnapshot, canEdit, commitEditorState, editMode, handle401, relationships, schedulePreviewUpload, tables]);
 
     const onUpdateTableColor = useCallback(async (tableId, color) => {
         if (!canEdit || !editMode) return;
@@ -618,64 +626,49 @@ function DiagramEditorContent() {
     }, []);
 
     const handlePaneMouseDown = useCallback((event) => {
-        if (
-            editorMode !== 'flow'
-            || !editMode
-            || !canEdit
-            || !['rect', 'roundRect', 'diamond', 'ellipse', 'sticky', 'text'].includes(canvasTool)
-            || !reactFlowRef.current
-        ) return;
+        if (!(canEdit && editMode) || editorMode !== 'flow' || !reactFlowRef.current) return;
+        if (!['rect', 'rounded', 'diamond', 'circle', 'sticky', 'text'].includes(activeTool)) return;
 
-        const pos = reactFlowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-        const id = `flow-${Date.now()}`;
-
-        dragRef.current = { id, startX: pos.x, startY: pos.y };
-
-        setFlowNodes((nds) => [...nds, {
-            id,
-            type: canvasTool === 'text' ? 'flowText' : canvasTool === 'sticky' ? 'flowSticky' : 'flowShape',
-            position: { x: pos.x, y: pos.y },
-            data: {
-                label: canvasTool === 'text' ? 'Text' : 'Shape',
-                text: canvasTool === 'text' ? 'Text' : 'Shape',
-                shape: canvasTool,
-                shapeType: canvasTool,
-                editMode,
-                fill: toolStyle.fill,
-                fillColor: toolStyle.fill,
-                stroke: toolStyle.stroke,
-                borderColor: toolStyle.stroke,
-                borderStyle: toolStyle.borderStyle,
-                textSize: toolStyle.textSize,
-            },
-            style: { width: 10, height: 10 },
-        }]);
-    }, [canEdit, canvasTool, editMode, editorMode, toolStyle.borderStyle, toolStyle.fill, toolStyle.stroke, toolStyle.textSize]);
+        const start = toFlowPoint(event.clientX, event.clientY);
+        const nextNode = createFlowNode(activeTool, start, { width: 10, height: 10 }, toolStyle);
+        drawingRef.current = { start, nodeId: nextNode.id, type: activeTool };
+        setIsDrawingShape(true);
+        setFlowNodes((current) => [...current, nextNode]);
+        setSelectedNodeId(nextNode.id);
+        event.preventDefault();
+    }, [activeTool, canEdit, editMode, editorMode, toFlowPoint, toolStyle]);
 
     const handlePaneMouseMove = useCallback((event) => {
-        setCursorPosition({ x: event.clientX + 10, y: event.clientY + 10 });
-        if (!dragRef.current || !reactFlowRef.current) return;
-        const pos = reactFlowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        if (!isDrawingShape || !drawingRef.current?.nodeId) return;
+        const current = toFlowPoint(event.clientX, event.clientY);
+        const start = drawingRef.current.start;
+        const width = Math.max(40, Math.abs(current.x - start.x));
+        const height = Math.max(30, Math.abs(current.y - start.y));
+        const topLeft = { x: Math.min(start.x, current.x), y: Math.min(start.y, current.y) };
 
-        setFlowNodes((nds) => nds.map((node) => {
-            if (node.id !== dragRef.current.id) return node;
-            const w = Math.max(60, Math.abs(pos.x - dragRef.current.startX));
-            const h = Math.max(40, Math.abs(pos.y - dragRef.current.startY));
-            return {
-                ...node,
-                position: { x: Math.min(dragRef.current.startX, pos.x), y: Math.min(dragRef.current.startY, pos.y) },
-                style: { ...node.style, width: w, height: h },
-            };
-        }));
-    }, []);
+        setFlowNodes((nodesState) => nodesState.map((node) => (
+            node.id === drawingRef.current.nodeId
+                ? { ...node, position: topLeft, style: { ...(node.style ?? {}), width, height } }
+                : node
+        )));
+    }, [isDrawingShape, toFlowPoint]);
 
     const handlePaneMouseUp = useCallback(() => {
-        if (!dragRef.current) return;
-        dragRef.current = null;
-        commitFlowState(flowNodes, flowEdges);
-        scheduleCanvasSave('flow', { nodes: flowNodes, edges: flowEdges, doodles: flowDoodles });
-        setCanvasTool('select');
-    }, [commitFlowState, flowDoodles, flowEdges, flowNodes, scheduleCanvasSave]);
+        if (!isDrawingShape || !drawingRef.current?.nodeId) return;
+        const nodeId = drawingRef.current.nodeId;
+        drawingRef.current = { start: null, nodeId: null, type: null };
+        setIsDrawingShape(false);
+
+        setFlowNodes((nodesState) => {
+            const node = nodesState.find((entry) => entry.id === nodeId);
+            if (!node) return nodesState;
+            const width = Number(node?.style?.width ?? 0);
+            const height = Number(node?.style?.height ?? 0);
+            return width < 25 || height < 25 ? nodesState.filter((entry) => entry.id !== nodeId) : nodesState;
+        });
+
+        setActiveTool('select');
+    }, [isDrawingShape]);
 
     const addMindSibling = useCallback(() => {
         if (!canEdit || !editMode || !selectedNodeId) return;
@@ -723,6 +716,8 @@ function DiagramEditorContent() {
     const onConnect = useCallback((connection) => {
         if (!canEdit || !editMode) return;
 
+        if (editorMode !== 'db' && activeTool !== 'connector') return;
+
         if (editorMode === 'db') {
             const sourceColumnId = parseColumnIdFromHandle(connection.sourceHandle);
             const targetColumnId = parseColumnIdFromHandle(connection.targetHandle);
@@ -754,7 +749,7 @@ function DiagramEditorContent() {
             commitMindState(mindNodes, nextEdges);
             scheduleCanvasSave('mind', { nodes: mindNodes, edges: nextEdges, doodles: mindDoodles });
         }
-    }, [canEdit, commitFlowState, commitMindState, editMode, editorMode, flowDoodles, flowEdges, flowNodes, mindDoodles, mindEdges, mindNodes, relationships, scheduleCanvasSave]);
+    }, [activeTool, canEdit, commitFlowState, commitMindState, editMode, editorMode, flowDoodles, flowEdges, flowNodes, mindDoodles, mindEdges, mindNodes, relationships, scheduleCanvasSave]);
 
     const onNodeClick = useCallback((event, node) => {
         setSelectedDoodleId(null);
@@ -764,7 +759,7 @@ function DiagramEditorContent() {
             return;
         }
 
-        if (canvasTool === 'child') {
+        if (activeTool === 'child') {
             const siblings = mindNodes.filter((entry) => entry.data?.parentId === node.id).length;
             const child = createMindChildNode(node, siblings);
             const expandedNodes = mindNodes.map((entry) => (entry.id === node.id ? { ...entry, data: { ...entry.data, collapsed: false } } : entry));
@@ -773,12 +768,12 @@ function DiagramEditorContent() {
             commitMindState(nextNodes, nextEdges);
             scheduleCanvasSave('mind', { nodes: nextNodes, edges: nextEdges, doodles: mindDoodles });
             setSelectedNodeId(child.id);
-            setCanvasTool('select');
+            setActiveTool('select');
             event.stopPropagation();
             return;
         }
 
-        if (canvasTool === 'sibling' && node.data?.parentId) {
+        if (activeTool === 'sibling' && node.data?.parentId) {
             const parent = mindNodes.find((entry) => entry.id === node.data.parentId);
             if (parent) {
                 const siblings = mindNodes.filter((entry) => entry.data?.parentId === parent.id).length;
@@ -788,7 +783,7 @@ function DiagramEditorContent() {
                 commitMindState(nextNodes, nextEdges);
                 scheduleCanvasSave('mind', { nodes: nextNodes, edges: nextEdges, doodles: mindDoodles });
                 setSelectedNodeId(sibling.id);
-                setCanvasTool('select');
+                setActiveTool('select');
                 event.stopPropagation();
                 return;
             }
@@ -796,7 +791,7 @@ function DiagramEditorContent() {
 
         setSelectedNodeId(String(node.id));
         setSelectedEdgeId(null);
-    }, [canEdit, canvasTool, commitMindState, editMode, editorMode, mindDoodles, mindEdges, mindNodes, scheduleCanvasSave]);
+    }, [canEdit, activeTool, commitMindState, editMode, editorMode, mindDoodles, mindEdges, mindNodes, scheduleCanvasSave]);
 
     const onEdgeClick = useCallback((_, edge) => {
         setSelectedEdgeId(String(edge.id));
@@ -949,6 +944,13 @@ function DiagramEditorContent() {
     useEffect(() => {
         const onKeyDown = (event) => {
             if (!canEdit) return;
+
+            if (event.key === 'Escape') {
+                drawingRef.current = { start: null, nodeId: null, type: null };
+                setIsDrawingShape(false);
+                setActiveTool('select');
+                return;
+            }
 
             if ((event.key === 'Delete' || event.key === 'Backspace') && (selectedEdgeId || selectedNodeId || selectedDoodleId)) {
                 event.preventDefault();
@@ -1187,14 +1189,14 @@ function DiagramEditorContent() {
     }, [commitMindState, mindDoodles, mindEdges, mindNodes, scheduleCanvasSave]);
 
     const handleDoodlePointerDown = useCallback((event) => {
-        if (!(canEdit && editMode) || canvasTool !== 'pen' || editorMode === 'db') return;
+        if (!(canEdit && editMode) || activeTool !== 'pen' || editorMode === 'db') return;
         const rect = event.currentTarget.getBoundingClientRect();
         const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
         setSelectedNodeId(null);
         setSelectedEdgeId(null);
         setSelectedDoodleId(null);
         setActiveStroke({ id: `stroke-${Date.now()}`, points: [point], color: toolStyle.stroke, strokeWidth: 2.5, userId: authUser?.id ?? null, userName: authUser?.name ?? 'User' });
-    }, [authUser?.id, authUser?.name, canEdit, canvasTool, editMode, editorMode, toolStyle.stroke]);
+    }, [authUser?.id, authUser?.name, canEdit, activeTool, editMode, editorMode, toolStyle.stroke]);
 
     const handleDoodlePointerMove = useCallback((event) => {
         if (!activeStroke) return;
@@ -1229,7 +1231,8 @@ function DiagramEditorContent() {
     const renderedNodes = useMemo(() => {
         if (editorMode === 'db') return Array.isArray(activeNodes) ? activeNodes : [];
 
-        return (Array.isArray(activeNodes) ? activeNodes : []).map((node) => ({
+        const baseNodes = (Array.isArray(activeNodes) ? activeNodes : []).filter((node) => (showInk ? true : node.type !== 'inkNode'));
+        return baseNodes.map((node) => ({
             ...node,
             data: {
                 ...node.data,
@@ -1238,7 +1241,7 @@ function DiagramEditorContent() {
                 onToggleCollapse: handleToggleMindCollapse,
             },
         }));
-    }, [activeNodes, canEdit, commitFlowLabel, commitMindLabel, editMode, editorMode, handleToggleMindCollapse]);
+    }, [activeNodes, canEdit, commitFlowLabel, commitMindLabel, editMode, editorMode, handleToggleMindCollapse, showInk]);
 
     const submitAddTable = async (event) => {
         event.preventDefault();
@@ -1507,19 +1510,10 @@ function DiagramEditorContent() {
 
                         <FloatingToolbox
                             mode={editorMode}
-                            tool={canvasTool}
-                            setTool={setCanvasTool}
-                        />
-                        <DoodleLayer
-                            enabled={editorMode !== 'db' && canvasTool === 'pen' && canEdit && editMode}
-                            visible={doodlesVisible && editorMode !== 'db'}
-                            doodles={activeDoodles}
-                            activeStroke={activeStroke}
-                            selectedId={selectedDoodleId}
-                            onSelect={(id) => { setSelectedDoodleId(id); setSelectedNodeId(null); setSelectedEdgeId(null); }}
-                            onPointerDown={handleDoodlePointerDown}
-                            onPointerMove={handleDoodlePointerMove}
-                            onPointerUp={handleDoodlePointerUp}
+                            activeTool={activeTool}
+                            onSelectTool={setActiveTool}
+                            showInk={showInk}
+                            onToggleInk={() => setShowInk((current) => !current)}
                         />
                         <ReactFlow
                             nodes={Array.isArray(renderedNodes) ? renderedNodes : []}
@@ -1527,9 +1521,9 @@ function DiagramEditorContent() {
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            panOnDrag={editorMode !== 'db' ? canvasTool === 'hand' : true}
-                            nodesDraggable={editorMode !== 'db' && canvasTool === 'hand' ? false : canEdit && editMode}
-                            elementsSelectable={editorMode === 'db' ? true : ['select', 'connector', 'child', 'sibling'].includes(canvasTool)}
+                            panOnDrag={editorMode !== 'db' ? activeTool === 'pan' : true}
+                            nodesDraggable={editorMode !== 'db' && activeTool === 'pan' ? false : canEdit && editMode}
+                            elementsSelectable={editorMode === 'db' ? true : ['select', 'connector', 'child', 'sibling'].includes(activeTool)}
                             selectionOnDrag
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
@@ -1539,22 +1533,22 @@ function DiagramEditorContent() {
                             onNodeClick={onNodeClick}
                             onEdgeClick={onEdgeClick}
                             onEdgeDoubleClick={onEdgeDoubleClick}
-                            onPaneMouseMove={handlePaneMouseMove}
-                            onPaneMouseDown={handlePaneMouseDown}
-                            onPaneMouseUp={handlePaneMouseUp}
+                            onPaneMouseMove={editorMode === 'flow' ? handlePaneMouseMove : undefined}
+                            onPaneMouseDown={editorMode === 'flow' ? handlePaneMouseDown : undefined}
+                            onPaneMouseUp={editorMode === 'flow' ? handlePaneMouseUp : undefined}
+                            onPaneMouseLeave={editorMode === 'flow' ? handlePaneMouseUp : undefined}
                             onPaneClick={(event) => {
                                 setSelectedEdgeId(null);
                                 setSelectedNodeId(null);
-                                setSelectedDoodleId(null);
                                 if (!(canEdit && editMode) || editorMode === 'db') return;
                                 const position = toFlowPoint(event.clientX, event.clientY);
-                                if (editorMode === 'mind' && canvasTool === 'topic') {
+                                if (editorMode === 'mind' && activeTool === 'topic') {
                                     const topic = createMindRootNode(position, 'Topic');
                                     const nextNodes = [...mindNodes, topic];
                                     commitMindState(nextNodes, mindEdges);
                                     scheduleCanvasSave('mind', { nodes: nextNodes, edges: mindEdges, doodles: mindDoodles });
                                     setSelectedNodeId(topic.id);
-                                    setCanvasTool('select');
+                                    setActiveTool('select');
                                 }
                             }}
                             onEdgesChange={onEdgesChange}
@@ -1564,16 +1558,15 @@ function DiagramEditorContent() {
                                 const firstEdge = selectedEdges?.[0] ?? null;
                                 setSelectedNodeId(firstNode?.id ?? null);
                                 setSelectedEdgeId(firstEdge?.id ?? null);
-                                if (firstNode || firstEdge) setSelectedDoodleId(null);
                             }}
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={{ type: 'bezier' }}
-                            connectionMode={editorMode === 'db' ? 'strict' : (canvasTool === 'connector' ? 'loose' : 'strict')}
+                            connectionMode={editorMode === 'db' ? 'strict' : (activeTool === 'connector' ? 'loose' : 'strict')}
                             nodesConnectable={canEdit && editMode}
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
-                            {showMiniMap && <MiniMap pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
-                            <Controls position={editorMode === 'db' ? 'bottom-right' : 'bottom-left'} showInteractive={false}>
+                            {showMiniMap && <MiniMap position="bottom-right" pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
+                            <Controls position="bottom-left" showInteractive={false}>
                                 {canEdit && (
                                     <ControlButton onClick={() => setEditMode((current) => !current)} title="Toggle edit mode">
                                         <i className={`fa-solid fa-pen-to-square ${editMode ? 'text-indigo-600' : 'text-slate-600'}`} />
@@ -1584,54 +1577,36 @@ function DiagramEditorContent() {
                                 </ControlButton>
                             </Controls>
                         </ReactFlow>
-                        {editorMode !== 'db' && editMode && (selectedNodeId || selectedDoodle) && (
-                            <SelectionToolbar
+                        {editorMode !== 'db' && editMode && (selectedNodeId || selectedEdgeId) && (
+                            <SelectionInspector
                                 selectedNode={(editorMode === 'flow' ? flowNodes : mindNodes).find((n) => n.id === selectedNodeId) ?? null}
-                                selectedDoodle={selectedDoodle}
+                                selectedEdge={(editorMode === 'flow' ? flowEdges : mindEdges).find((e) => e.id === selectedEdgeId) ?? null}
                                 onUpdateNode={(updates) => {
+                                    if (!selectedNodeId) return;
                                     if (editorMode === 'flow') {
                                         const next = flowNodes.map((n) => (n.id === selectedNodeId ? { ...n, data: { ...n.data, ...updates } } : n));
                                         setFlowNodes(next);
-                                        scheduleCanvasSave('flow', { nodes: next, edges: flowEdges, doodles: flowDoodles });
+                                        scheduleCanvasSave('flow', { nodes: next, edges: flowEdges });
                                     } else {
                                         const next = mindNodes.map((n) => (n.id === selectedNodeId ? { ...n, data: { ...n.data, ...updates } } : n));
                                         setMindNodes(next);
-                                        scheduleCanvasSave('mind', { nodes: next, edges: mindEdges, doodles: mindDoodles });
+                                        scheduleCanvasSave('mind', { nodes: next, edges: mindEdges });
                                     }
                                 }}
-                                onDeleteNode={deleteSelection}
-                                onUpdateDoodle={(updates) => {
-                                    if (!selectedDoodleId) return;
+                                onUpdateEdge={(updates) => {
+                                    if (!selectedEdgeId) return;
                                     if (editorMode === 'flow') {
-                                        const next = flowDoodles.map((d) => (d.id === selectedDoodleId ? { ...d, ...updates } : d));
-                                        setFlowDoodles(next);
-                                        scheduleCanvasSave('flow', { nodes: flowNodes, edges: flowEdges, doodles: next });
+                                        const next = flowEdges.map((e) => (e.id === selectedEdgeId ? { ...e, ...updates } : e));
+                                        setFlowEdges(next);
+                                        scheduleCanvasSave('flow', { nodes: flowNodes, edges: next });
                                     } else {
-                                        const next = mindDoodles.map((d) => (d.id === selectedDoodleId ? { ...d, ...updates } : d));
-                                        setMindDoodles(next);
-                                        scheduleCanvasSave('mind', { nodes: mindNodes, edges: mindEdges, doodles: next });
+                                        const next = mindEdges.map((e) => (e.id === selectedEdgeId ? { ...e, ...updates } : e));
+                                        setMindEdges(next);
+                                        scheduleCanvasSave('mind', { nodes: mindNodes, edges: next });
                                     }
                                 }}
-                                onDeleteDoodle={() => {
-                                    if (!selectedDoodleId) return;
-                                    if (editorMode === 'flow') {
-                                        const next = flowDoodles.filter((d) => d.id !== selectedDoodleId);
-                                        setFlowDoodles(next);
-                                        scheduleCanvasSave('flow', { nodes: flowNodes, edges: flowEdges, doodles: next });
-                                    } else {
-                                        const next = mindDoodles.filter((d) => d.id !== selectedDoodleId);
-                                        setMindDoodles(next);
-                                        scheduleCanvasSave('mind', { nodes: mindNodes, edges: mindEdges, doodles: next });
-                                    }
-                                    setSelectedDoodleId(null);
-                                }}
+                                onDelete={deleteSelection}
                             />
-                        )}
-                        {editorMode !== 'db' && canvasTool !== 'select' && (
-                            <div className="cursor-tool fixed z-40 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs shadow" style={{ left: cursorPosition.x, top: cursorPosition.y }}>
-                                <i className="fa-solid fa-wand-magic-sparkles mr-1" aria-hidden="true" />
-                                {canvasTool}
-                            </div>
                         )}
                     </div>
                 </div>
