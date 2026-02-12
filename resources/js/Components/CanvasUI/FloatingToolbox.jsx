@@ -1,6 +1,6 @@
 const flowTools = [
     { key: 'select', icon: 'fa-solid fa-arrow-pointer', title: 'Select' },
-    { key: 'hand', icon: 'fa-regular fa-hand', title: 'Hand' },
+    { key: 'pan', icon: 'fa-regular fa-hand', title: 'Pan' },
     { key: 'connector', icon: 'fa-solid fa-arrow-right-long', title: 'Connector' },
     { key: 'rect', icon: 'fa-regular fa-square', title: 'Rectangle' },
     { key: 'rounded', icon: 'fa-regular fa-square-full', title: 'Rounded Rectangle' },
@@ -13,7 +13,7 @@ const flowTools = [
 
 const mindTools = [
     { key: 'select', icon: 'fa-solid fa-arrow-pointer', title: 'Select' },
-    { key: 'hand', icon: 'fa-regular fa-hand', title: 'Hand' },
+    { key: 'pan', icon: 'fa-regular fa-hand', title: 'Pan' },
     { key: 'topic', icon: 'fa-solid fa-circle-plus', title: 'Add Topic' },
     { key: 'child', icon: 'fa-solid fa-diagram-next', title: 'Add Subtopic' },
     { key: 'connector', icon: 'fa-solid fa-arrow-right-long', title: 'Connector' },
