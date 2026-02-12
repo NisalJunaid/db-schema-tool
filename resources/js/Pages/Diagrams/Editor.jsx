@@ -43,10 +43,8 @@ const FLOW_DEFAULT_NODE_SIZES = {
     circle: { width: 160, height: 160 },
     text: { width: 220, height: 90 },
     sticky: { width: 240, height: 160 },
-    parallelogram: { width: 240, height: 140 },
-    cylinder: { width: 220, height: 140 },
 };
-const FLOW_CLICK_CREATE_TOOLS = ['text', 'sticky', 'rect', 'rounded', 'diamond', 'circle', 'parallelogram', 'cylinder'];
+const FLOW_CLICK_CREATE_TOOLS = ['text', 'sticky', 'rect', 'rounded', 'diamond', 'circle'];
 const FLOW_CONNECTOR_TOOL = 'connector';
 const FLOW_PAN_TOOL = 'pan';
 const FLOW_SELECT_TOOL = 'select';
@@ -144,7 +142,7 @@ function DiagramEditorContent() {
     const flowMutationBaseRef = useRef({ nodes: null, edges: null });
     const latestFlowStateRef = useRef({ nodes: flowNodes, edges: flowEdges });
     const doodlePointerCaptureRef = useRef({ element: null, pointerId: null });
-    const suppressNextPaneClickRef = useRef(false);
+    const [hoverPreview, setHoverPreview] = useState(null);
 
     const [showAddTableModal, setShowAddTableModal] = useState(false);
     const [addTableForm, setAddTableForm] = useState({ name: '', schema: '' });
@@ -186,6 +184,13 @@ function DiagramEditorContent() {
         }
     }, [editorMode]);
 
+    useEffect(() => {
+        if (editorMode !== 'flow' || !editMode || !FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) {
+            setHoverPreview(null);
+        }
+    }, [activeTool, editMode, editorMode]);
+
+
     const permissions = diagram?.permissions ?? pagePermissions ?? {};
     const canView = Boolean(permissions.canView ?? true);
     const canEdit = Boolean(permissions.canEdit);
@@ -194,7 +199,6 @@ function DiagramEditorContent() {
 
     const isCanvasMode = editorMode === 'flow' || editorMode === 'mind';
     const isFlow = editorMode === 'flow';
-    const isShapePlacementMode = isFlow && toolbarMode === 'shapes' && activeShape !== null;
     const isPanTool = isFlow && activeTool === FLOW_PAN_TOOL;
     const isConnectorTool = isFlow && activeTool === FLOW_CONNECTOR_TOOL;
     const isSelectTool = isFlow && activeTool === FLOW_SELECT_TOOL;
@@ -669,43 +673,13 @@ function DiagramEditorContent() {
         return { x: 0, y: 0 };
     }, []);
 
-    const handlePaneMouseDown = useCallback((event) => {
+    const handlePaneMouseDown = useCallback(() => {
         if (editorMode !== 'flow') return;
 
         if (isPanTool) {
             setIsPanningCanvas(true);
         }
-
-        if (!canEdit) return;
-        if (!editMode) return;
-
-        if (!reactFlowRef.current) return;
-
-        if (event.target?.closest?.('.react-flow__node')) return;
-        if (event.target?.closest?.('.react-flow__edge')) return;
-        if (event.target?.closest?.('.react-flow__controls')) return;
-        if (event.target?.closest?.('.react-flow__minimap')) return;
-        if (!event.target?.closest?.('.react-flow__pane')) return;
-
-        if (!FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) return;
-
-        const position = toFlowPoint(event.clientX, event.clientY);
-        const size = FLOW_DEFAULT_NODE_SIZES[activeTool] ?? FLOW_DEFAULT_NODE_SIZES.rect;
-        const newNode = createFlowNode(activeTool, position, size, toolStyle);
-        const nextNodes = [...flowNodes, newNode];
-
-        commitFlowState(nextNodes, flowEdges);
-        scheduleCanvasSave('flow', { nodes: nextNodes, edges: flowEdges, doodles: flowDoodles });
-
-        setSelectedEdgeId(null);
-        setSelectedDoodleId(null);
-        setSelectedNodeId(newNode.id);
-        suppressNextPaneClickRef.current = true;
-        setToolbarMode('default');
-        setActiveShape(null);
-        setActiveTool('select');
-        event.preventDefault();
-    }, [activeTool, canEdit, commitFlowState, editMode, editorMode, flowDoodles, flowEdges, flowNodes, isPanTool, scheduleCanvasSave, toFlowPoint, toolStyle]);
+    }, [editorMode, isPanTool]);
 
     const handlePaneMouseUp = useCallback(() => {
         setIsPanningCanvas(false);
@@ -713,7 +687,21 @@ function DiagramEditorContent() {
 
     const handlePaneMouseLeave = useCallback(() => {
         setIsPanningCanvas(false);
+        setHoverPreview(null);
     }, []);
+
+    const handlePaneMouseMove = useCallback((event) => {
+        if (editorMode !== 'flow') return;
+        if (!editMode) return;
+        if (!FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) {
+            setHoverPreview(null);
+            return;
+        }
+
+        const position = toFlowPoint(event.clientX, event.clientY);
+        const size = FLOW_DEFAULT_NODE_SIZES[activeTool] ?? FLOW_DEFAULT_NODE_SIZES.rect;
+        setHoverPreview({ type: activeTool, position, size });
+    }, [activeTool, editMode, editorMode, toFlowPoint]);
 
     const addMindSibling = useCallback(() => {
         if (!canEdit || !editMode || !selectedNodeId) return;
@@ -1332,12 +1320,10 @@ function DiagramEditorContent() {
         if (!isCanvasMode) return 'default';
         if (!editMode) return 'default';
         if (isPanTool) return isPanningCanvas ? 'grabbing' : 'grab';
-        if (toolbarMode === 'shapes') return 'crosshair';
+        if (isFlow && FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) return activeTool === 'text' ? 'text' : 'crosshair';
         if (isPenTool) return 'crosshair';
-        if (activeTool === 'text') return 'text';
-        if (activeTool === 'sticky') return 'crosshair';
         return 'default';
-    }, [activeTool, editMode, isCanvasMode, isPanTool, isPenTool, isPanningCanvas, toolbarMode]);
+    }, [activeTool, editMode, isCanvasMode, isFlow, isPanTool, isPenTool, isPanningCanvas]);
 
     const canvasCursor = useMemo(() => {
         if (!isFlow) return '';
@@ -1361,7 +1347,7 @@ function DiagramEditorContent() {
         if (editorMode === 'db') return Array.isArray(activeNodes) ? activeNodes : [];
 
         const baseNodes = (Array.isArray(activeNodes) ? activeNodes : []).filter((node) => (showInk ? true : node.type !== 'inkNode'));
-        return baseNodes.map((node) => ({
+        const mappedNodes = baseNodes.map((node) => ({
             ...node,
             data: {
                 ...node.data,
@@ -1371,7 +1357,27 @@ function DiagramEditorContent() {
                 onToggleCollapse: handleToggleMindCollapse,
             },
         }));
-    }, [activeNodes, activeTool, canEdit, commitFlowLabel, commitMindLabel, editMode, editorMode, handleToggleMindCollapse, showInk]);
+
+        if (editorMode !== 'flow' || !hoverPreview) return mappedNodes;
+
+        const previewNode = {
+            id: '__preview__',
+            type: hoverPreview.type,
+            position: hoverPreview.position,
+            draggable: false,
+            selectable: false,
+            connectable: false,
+            data: { preview: true },
+            style: {
+                width: hoverPreview.size.width,
+                height: hoverPreview.size.height,
+                opacity: 0.4,
+                pointerEvents: 'none',
+            },
+        };
+
+        return [...mappedNodes, previewNode];
+    }, [activeNodes, activeTool, canEdit, commitFlowLabel, commitMindLabel, editMode, editorMode, handleToggleMindCollapse, hoverPreview, showInk]);
 
     const submitAddTable = async (event) => {
         event.preventDefault();
@@ -1696,19 +1702,30 @@ function DiagramEditorContent() {
                             onEdgeClick={onEdgeClick}
                             onEdgeDoubleClick={onEdgeDoubleClick}
                             onPaneMouseDown={editorMode === 'flow' ? handlePaneMouseDown : undefined}
+                            onPaneMouseMove={editorMode === 'flow' ? handlePaneMouseMove : undefined}
                             onPaneMouseUp={editorMode === 'flow' ? handlePaneMouseUp : undefined}
                             onPaneMouseLeave={editorMode === 'flow' ? handlePaneMouseLeave : undefined}
                             onPaneClick={(event) => {
-                                if (suppressNextPaneClickRef.current) {
-                                    suppressNextPaneClickRef.current = false;
-                                    return;
-                                }
-
                                 setSelectedEdgeId(null);
                                 setSelectedNodeId(null);
                                 if (!(canEdit && editMode) || editorMode === 'db') return;
-                                if (isShapePlacementMode) return;
                                 const position = toFlowPoint(event.clientX, event.clientY);
+
+                                if (editorMode === 'flow' && FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) {
+                                    const size = FLOW_DEFAULT_NODE_SIZES[activeTool] ?? FLOW_DEFAULT_NODE_SIZES.rect;
+                                    const newNode = createFlowNode(activeTool, position, size, toolStyle);
+                                    const nextNodes = [...flowNodes, newNode];
+                                    commitFlowState(nextNodes, flowEdges);
+                                    scheduleCanvasSave('flow', { nodes: nextNodes, edges: flowEdges, doodles: flowDoodles });
+                                    setSelectedDoodleId(null);
+                                    setSelectedNodeId(newNode.id);
+                                    setHoverPreview(null);
+                                    setToolbarMode('default');
+                                    setActiveShape(null);
+                                    setActiveTool('select');
+                                    return;
+                                }
+
                                 if (editorMode === 'mind' && activeTool === 'topic') {
                                     const topic = createMindRootNode(position, 'Topic');
                                     const nextNodes = [...mindNodes, topic];
