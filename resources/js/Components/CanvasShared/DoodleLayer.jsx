@@ -21,10 +21,10 @@ export default function DoodleLayer({
     return (
         <div
             className={`absolute inset-0 z-30 ${enabled ? 'pointer-events-auto' : 'pointer-events-none'}`}
-            onMouseDown={enabled ? onPointerDown : undefined}
-            onMouseMove={enabled ? onPointerMove : undefined}
-            onMouseUp={enabled ? onPointerUp : undefined}
-            onMouseLeave={enabled ? onPointerUp : undefined}
+            onPointerDown={enabled ? onPointerDown : undefined}
+            onPointerMove={enabled ? onPointerMove : undefined}
+            onPointerUp={enabled ? onPointerUp : undefined}
+            onPointerLeave={enabled ? onPointerUp : undefined}
         >
             <svg className="absolute inset-0 h-full w-full">
                 {rendered.map((doodle) => {
