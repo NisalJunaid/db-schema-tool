@@ -13,10 +13,10 @@ const textVAlignClassMap = {
 };
 
 const HANDLE_POINTS = [
-    { key: 'top', side: Position.Top, style: { left: '50%', top: 0, transform: 'translate(-50%, -50%)' } },
-    { key: 'right', side: Position.Right, style: { right: 0, top: '50%', transform: 'translate(50%, -50%)' } },
-    { key: 'bottom', side: Position.Bottom, style: { left: '50%', bottom: 0, transform: 'translate(-50%, 50%)' } },
-    { key: 'left', side: Position.Left, style: { left: 0, top: '50%', transform: 'translate(-50%, -50%)' } },
+    { id: 'target-top', type: 'target', side: Position.Top, style: { left: '50%', transform: 'translateX(-50%)' } },
+    { id: 'source-right', type: 'source', side: Position.Right, style: { top: '50%', transform: 'translateY(-50%)' } },
+    { id: 'source-bottom', type: 'source', side: Position.Bottom, style: { left: '50%', transform: 'translateX(-50%)' } },
+    { id: 'target-left', type: 'target', side: Position.Left, style: { top: '50%', transform: 'translateY(-50%)' } },
 ];
 
 const toStrokeDashArray = (strokeStyle) => {
@@ -85,8 +85,8 @@ function ShapeSvg({ shape, fill, stroke, strokeWidth, strokeStyle, opacity, shad
 export default function FlowShapeNode({ id, data, selected }) {
     const shape = data?.shapeType ?? data?.shape ?? 'rect';
     const showHoverHandles = Boolean(data?.showHoverHandles);
-    const showHandles = selected || showHoverHandles;
-    const handleOpacity = selected ? 1 : (showHoverHandles ? 0.3 : 0);
+    const showHandles = selected || showHoverHandles || Boolean(data?.showAllHandles);
+    const handleOpacity = selected || data?.showAllHandles ? 1 : (showHoverHandles ? 0.3 : 0);
     const handleStyle = {
         width: 10,
         height: 10,
@@ -112,18 +112,9 @@ export default function FlowShapeNode({ id, data, selected }) {
             />
             {showHandles && HANDLE_POINTS.map((handle) => (
                 <Handle
-                    key={`target-${handle.key}`}
-                    id={`target-${handle.key}`}
-                    type="target"
-                    position={handle.side}
-                    style={{ ...handle.style, ...handleStyle }}
-                />
-            ))}
-            {showHandles && HANDLE_POINTS.map((handle) => (
-                <Handle
-                    key={`source-${handle.key}`}
-                    id={`source-${handle.key}`}
-                    type="source"
+                    key={handle.id}
+                    id={handle.id}
+                    type={handle.type}
                     position={handle.side}
                     style={{ ...handle.style, ...handleStyle }}
                 />

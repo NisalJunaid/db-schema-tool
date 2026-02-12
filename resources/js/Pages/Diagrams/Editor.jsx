@@ -1,7 +1,7 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toBlob, toPng } from 'html-to-image';
-import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, getRectOfNodes, getViewportForBounds } from 'reactflow';
+import { Background, ControlButton, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, getRectOfNodes, getViewportForBounds } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
 import Sidebar from '@/Components/Diagram/Sidebar';
@@ -216,6 +216,7 @@ function DiagramEditorContent() {
     const isPanTool = isFlow && activeTool === FLOW_PAN_TOOL;
     const isSelectTool = isFlow && activeTool === FLOW_SELECT_TOOL;
     const isPenTool = isCanvasMode && activeTool === FLOW_PEN_TOOL;
+    const isArrowTool = activeTool === FLOW_CONNECTOR_TOOL;
 
     const columnToTableMap = useMemo(() => {
         const map = {};
@@ -653,6 +654,14 @@ function DiagramEditorContent() {
         return mindEdges.filter((edge) => !hiddenIds.has(edge.source) && !hiddenIds.has(edge.target));
     }, [editorMode, edges, flowEdges, mindEdges, mindNodes]);
 
+    const enhancedFlowNodes = useMemo(() => flowNodes.map((node) => ({
+        ...node,
+        data: {
+            ...node.data,
+            showAllHandles: isArrowTool,
+        },
+    })), [flowNodes, isArrowTool]);
+
     const commitFlowState = useCallback((nextNodes, nextEdges, previousNodes = flowNodes, previousEdges = flowEdges) => {
         setFlowHistory((current) => ({
             past: [...current.past, buildCanvasSnapshot(previousNodes, previousEdges)],
@@ -775,6 +784,21 @@ function DiagramEditorContent() {
         }
     }, [editorMode]);
 
+    const handleConnect = useCallback((params) => {
+        const newEdge = {
+            ...params,
+            type: 'default',
+            markerEnd: {
+                type: MarkerType.ArrowClosed,
+            },
+        };
+
+        const nextEdges = addEdge(newEdge, flowEdges);
+        setFlowEdges((eds) => addEdge(newEdge, eds));
+        commitFlowState(flowNodes, nextEdges);
+        scheduleCanvasSave('flow', { nodes: flowNodes, edges: nextEdges, doodles: flowDoodles });
+    }, [commitFlowState, flowDoodles, flowEdges, flowNodes, scheduleCanvasSave]);
+
     const onConnect = useCallback((connection) => {
         if (!canEdit || !editMode) return;
 
@@ -791,25 +815,22 @@ function DiagramEditorContent() {
             return;
         }
 
-        const nextEdge = {
-            id: `edge-${crypto.randomUUID()}`,
-            ...FLOW_EDGE_DEFAULTS,
-            ...connection,
-            label: '',
-        };
-
         if (editorMode === 'flow') {
-            const nextEdges = addEdge(nextEdge, flowEdges);
-            commitFlowState(flowNodes, nextEdges);
-            scheduleCanvasSave('flow', { nodes: flowNodes, edges: nextEdges, doodles: flowDoodles });
+            handleConnect(connection);
         }
 
         if (editorMode === 'mind') {
+            const nextEdge = {
+                id: `edge-${crypto.randomUUID()}`,
+                ...FLOW_EDGE_DEFAULTS,
+                ...connection,
+                label: '',
+            };
             const nextEdges = addEdge({ ...nextEdge, style: { stroke: '#94a3b8', strokeWidth: 1.8 } }, mindEdges);
             commitMindState(mindNodes, nextEdges);
             scheduleCanvasSave('mind', { nodes: mindNodes, edges: nextEdges, doodles: mindDoodles });
         }
-    }, [activeTool, canEdit, commitFlowState, commitMindState, editMode, editorMode, flowDoodles, flowEdges, flowNodes, mindDoodles, mindEdges, mindNodes, relationships, scheduleCanvasSave]);
+    }, [activeTool, canEdit, commitMindState, editMode, editorMode, handleConnect, mindDoodles, mindEdges, mindNodes, relationships, scheduleCanvasSave]);
 
     const onNodeClick = useCallback((event, node) => {
         setSelectedDoodleId(null);
@@ -1424,6 +1445,20 @@ function DiagramEditorContent() {
         return [...mappedNodes, previewNode];
     }, [activeNodes, activeTool, canEdit, commitFlowLabel, commitFlowState, commitMindLabel, editMode, editorMode, handleToggleMindCollapse, hoverPreview, hoverTargetNodeId, isConnecting, showInk]);
 
+    const nodesForRender = useMemo(() => {
+        if (editorMode !== 'flow') return renderedNodes;
+
+        const showAllHandlesById = new Map(enhancedFlowNodes.map((node) => [node.id, node.data?.showAllHandles]));
+        return renderedNodes.map((node) => ({
+            ...node,
+            data: {
+                ...node.data,
+                showAllHandles: showAllHandlesById.get(node.id) ?? node.data?.showAllHandles,
+            },
+        }));
+    }, [editorMode, enhancedFlowNodes, renderedNodes]);
+
+
     const submitAddTable = async (event) => {
         event.preventDefault();
         if (!canEdit || !editMode) return;
@@ -1735,14 +1770,14 @@ function DiagramEditorContent() {
                         )}
                         <ReactFlow
                             ref={reactFlowRef}
-                            nodes={Array.isArray(renderedNodes) ? renderedNodes : []}
+                            nodes={Array.isArray(nodesForRender) ? nodesForRender : []}
                             edges={Array.isArray(activeEdges) ? activeEdges : []}
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            panOnDrag={isFlow ? activeTool === 'pan' : (editorMode === 'mind' ? canEdit && editMode && activeTool === 'pan' : undefined)}
+                            panOnDrag={activeTool === FLOW_PAN_TOOL}
                             nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode : canEdit && editMode}
-                            elementsSelectable={editorMode === 'db' ? true : isFlow ? true : canEdit && editMode}
+                            elementsSelectable={true}
                             selectionOnDrag={editorMode === 'db' ? true : isFlow ? editMode : canEdit && editMode}
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
@@ -1805,7 +1840,7 @@ function DiagramEditorContent() {
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={editorMode === 'flow' ? FLOW_EDGE_DEFAULTS : { type: 'bezier' }}
                             connectionMode={editorMode === 'db' ? 'strict' : (isFlow ? 'loose' : (activeTool === 'connector' ? 'loose' : 'strict'))}
-                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : isFlow ? canEdit && editMode : canEdit && editMode && activeTool === 'connector'}
+                            nodesConnectable={editMode}
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
                             {showMiniMap && <MiniMap position="bottom-right" pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
