@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import { Handle, NodeResizer, Position } from 'reactflow';
 
 const radiusByShape = {
@@ -7,35 +6,29 @@ const radiusByShape = {
     ellipse: 'rounded-full',
 };
 
+const textSizeClassMap = {
+    sm: 'text-xs',
+    md: 'text-sm',
+    lg: 'text-lg',
+};
+
 export default function FlowShapeNode({ id, data, selected }) {
-    const [editing, setEditing] = useState(false);
-    const [text, setText] = useState(data?.label ?? data?.text ?? 'Shape');
-    const inputRef = useRef(null);
-    const shape = data?.shapeType ?? 'rect';
+    const shape = data?.shapeType ?? data?.shape ?? 'rect';
     const isDiamond = shape === 'diamond';
 
-    useEffect(() => {
-        setText(data?.label ?? data?.text ?? 'Shape');
-    }, [data?.label, data?.text]);
-
-    useEffect(() => {
-        if (editing) inputRef.current?.focus();
-    }, [editing]);
-
-    const commit = () => {
-        setEditing(false);
-        data?.onLabelChange?.(id, text);
+    const updateLabel = (nextLabel) => {
+        const trimmed = (nextLabel ?? '').trim();
+        data?.onLabelChange?.(id, trimmed || 'Shape');
     };
 
     return (
         <>
-            <NodeResizer isVisible={selected && data?.editMode} minWidth={80} minHeight={40} />
+            <NodeResizer isVisible={selected && data?.editMode} minWidth={60} minHeight={40} />
             <Handle type="target" position={Position.Top} />
             <Handle type="target" position={Position.Left} />
             <Handle type="source" position={Position.Right} />
             <Handle type="source" position={Position.Bottom} />
             <div
-                onDoubleClick={(event) => { event.stopPropagation(); setEditing(true); }}
                 className={`h-full w-full border px-3 py-2 shadow-sm ${selected ? 'ring-2 ring-indigo-300' : ''} ${radiusByShape[shape] ?? 'rounded-xl'}`}
                 style={{
                     backgroundColor: data?.fill ?? data?.fillColor ?? '#fff',
@@ -44,19 +37,16 @@ export default function FlowShapeNode({ id, data, selected }) {
                     transform: isDiamond ? 'rotate(45deg)' : undefined,
                 }}
             >
-                {editing ? (
-                    <input
-                        ref={inputRef}
-                        className="nodrag nopan w-full rounded border border-slate-300 px-1 py-0.5 text-sm"
-                        value={text}
-                        onChange={(event) => setText(event.target.value)}
-                        onBlur={commit}
-                        onKeyDown={(event) => { if (event.key === 'Enter') commit(); }}
-                        onMouseDown={(event) => event.stopPropagation()}
-                    />
-                ) : (
-                    <p className="text-center text-sm text-slate-700" style={{ transform: isDiamond ? 'rotate(-45deg)' : undefined }}>{text}</p>
-                )}
+                <div
+                    contentEditable={data?.editMode}
+                    suppressContentEditableWarning
+                    onBlur={(event) => updateLabel(event.target.innerText)}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    className={`nodrag nopan outline-none text-center text-slate-700 ${textSizeClassMap[data?.textSize ?? data?.fontSize ?? 'md'] ?? 'text-sm'}`}
+                    style={{ transform: isDiamond ? 'rotate(-45deg)' : undefined }}
+                >
+                    {data?.label ?? data?.text ?? 'Shape'}
+                </div>
             </div>
         </>
     );

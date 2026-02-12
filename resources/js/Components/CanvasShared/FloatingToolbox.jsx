@@ -25,21 +25,7 @@ function ToolButton({ active, icon, title, onClick }) {
     );
 }
 
-export default function FloatingToolbox({
-    mode,
-    tool,
-    setTool,
-    strokeColor,
-    setStrokeColor,
-    fillColor,
-    setFillColor,
-    textSize,
-    setTextSize,
-    borderStyle,
-    setBorderStyle,
-    doodlesVisible,
-    setDoodlesVisible,
-}) {
+export default function FloatingToolbox({ mode, tool, setTool }) {
     if (!['flow', 'mind'].includes(mode)) return null;
 
     return (
@@ -47,24 +33,6 @@ export default function FloatingToolbox({
             {tools.map((item) => (
                 <ToolButton key={item.key} active={tool === item.key} icon={item.icon} title={item.title} onClick={() => setTool(item.key)} />
             ))}
-
-            <div className="mt-1 w-full border-t border-slate-200 pt-2">
-                <label className="mb-1 block text-[10px] text-slate-500">Fill</label>
-                <input type="color" value={fillColor} onChange={(event) => setFillColor(event.target.value)} className="mb-2 h-7 w-full rounded" />
-                <label className="mb-1 block text-[10px] text-slate-500">Stroke</label>
-                <input type="color" value={strokeColor} onChange={(event) => setStrokeColor(event.target.value)} className="mb-2 h-7 w-full rounded" />
-                <select value={textSize} onChange={(event) => setTextSize(event.target.value)} className="mb-2 w-full rounded border border-slate-200 px-1 py-1 text-[11px]">
-                    <option value="sm">Text S</option>
-                    <option value="md">Text M</option>
-                    <option value="lg">Text L</option>
-                </select>
-                <button type="button" onClick={() => setBorderStyle(borderStyle === 'solid' ? 'dashed' : 'solid')} className="mb-2 w-full rounded border border-slate-200 px-1 py-1 text-[11px]">
-                    {borderStyle === 'solid' ? 'Solid' : 'Dashed'}
-                </button>
-                <button type="button" onClick={() => setDoodlesVisible((current) => !current)} className="w-full rounded border border-slate-200 px-1 py-1 text-[11px]">
-                    {doodlesVisible ? 'Hide ink' : 'Show ink'}
-                </button>
-            </div>
         </div>
     );
 }
