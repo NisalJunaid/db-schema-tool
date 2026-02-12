@@ -21,7 +21,7 @@ export default function FlowStickyNode({ id, data, selected }) {
 
     return (
         <>
-            <NodeResizer isVisible={selected && data?.editMode} minWidth={80} minHeight={40} />
+            <NodeResizer isVisible={selected && data?.editMode && data?.activeTool === 'select'} minWidth={80} minHeight={40} />
             <Handle type="target" position={Position.Left} />
             <Handle type="source" position={Position.Right} />
             <div

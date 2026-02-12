@@ -21,7 +21,7 @@ export default function FlowTextNode({ id, data, selected }) {
 
     return (
         <>
-            <NodeResizer isVisible={selected && data?.editMode} minWidth={80} minHeight={40} />
+            <NodeResizer isVisible={selected && data?.editMode && data?.activeTool === 'select'} minWidth={80} minHeight={40} />
             <Handle type="target" position={Position.Left} />
             <Handle type="source" position={Position.Right} />
             <div className={`h-full w-full bg-transparent px-2 py-1 ${selected ? 'rounded-md ring-2 ring-indigo-300' : ''}`} onDoubleClick={(event) => { event.stopPropagation(); setEditing(true); }}>
