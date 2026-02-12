@@ -114,9 +114,7 @@ function DiagramEditorContent() {
     const [selectedDoodleId, setSelectedDoodleId] = useState(null);
     const [flowDoodles, setFlowDoodles] = useState(Array.isArray(initialDiagramPayload?.flow_state?.doodles) ? initialDiagramPayload.flow_state.doodles : []);
     const [mindDoodles, setMindDoodles] = useState(Array.isArray(initialDiagramPayload?.mind_state?.doodles) ? initialDiagramPayload.mind_state.doodles : []);
-    const [doodlesVisible, setDoodlesVisible] = useState(true);
     const [activeStroke, setActiveStroke] = useState(null);
-    const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
     const [editModeNotice, setEditModeNotice] = useState('');
     const [history, setHistory] = useState({ past: [], present: null, future: [] });
     const [flowHistory, setFlowHistory] = useState({ past: [], present: null, future: [] });
@@ -588,9 +586,6 @@ function DiagramEditorContent() {
         const hiddenIds = new Set(mindNodes.filter((node) => node.data?.collapsed).flatMap((node) => collectDescendantIds(node.id, mindNodes)));
         return mindEdges.filter((edge) => !hiddenIds.has(edge.source) && !hiddenIds.has(edge.target));
     }, [editorMode, edges, flowEdges, mindEdges, mindNodes]);
-
-    const activeDoodles = editorMode === 'flow' ? flowDoodles : mindDoodles;
-    const selectedDoodle = (activeDoodles ?? []).find((doodle) => doodle.id === selectedDoodleId) ?? null;
 
     const commitFlowState = useCallback((nextNodes, nextEdges, previousNodes = flowNodes, previousEdges = flowEdges) => {
         setFlowHistory((current) => ({
@@ -1506,7 +1501,7 @@ function DiagramEditorContent() {
                         </div>
                     )}
 
-                    <div className="relative m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div className={`relative m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${activeTool === 'hand' ? 'cursor-grab' : (['rect','rounded','diamond','circle','sticky','text','pen'].includes(activeTool) ? 'cursor-crosshair' : 'cursor-default')}`}>
 
                         <FloatingToolbox
                             mode={editorMode}
@@ -1514,6 +1509,7 @@ function DiagramEditorContent() {
                             onSelectTool={setActiveTool}
                             showInk={showInk}
                             onToggleInk={() => setShowInk((current) => !current)}
+                            editMode={canEdit && editMode}
                         />
                         <ReactFlow
                             nodes={Array.isArray(renderedNodes) ? renderedNodes : []}
@@ -1521,10 +1517,10 @@ function DiagramEditorContent() {
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            panOnDrag={editorMode !== 'db' ? activeTool === 'pan' : true}
-                            nodesDraggable={editorMode !== 'db' && activeTool === 'pan' ? false : canEdit && editMode}
-                            elementsSelectable={editorMode === 'db' ? true : ['select', 'connector', 'child', 'sibling'].includes(activeTool)}
-                            selectionOnDrag
+                            panOnDrag={editorMode !== 'db' ? activeTool === 'hand' : true}
+                            nodesDraggable={editorMode !== 'db' && activeTool === 'hand' ? false : canEdit && editMode}
+                            elementsSelectable={editorMode === 'db' ? true : ['select', 'connector', 'child', 'topic'].includes(activeTool)}
+                            selectionOnDrag={activeTool === 'select'}
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
                             onNodesChange={onNodesChange}
@@ -1542,6 +1538,14 @@ function DiagramEditorContent() {
                                 setSelectedNodeId(null);
                                 if (!(canEdit && editMode) || editorMode === 'db') return;
                                 const position = toFlowPoint(event.clientX, event.clientY);
+                                if (editorMode === 'flow' && activeTool === 'text') {
+                                    const nextNode = createFlowNode('text', position, { width: 160, height: 60 }, toolStyle);
+                                    const nextNodes = [...flowNodes, nextNode];
+                                    commitFlowState(nextNodes, flowEdges);
+                                    scheduleCanvasSave('flow', { nodes: nextNodes, edges: flowEdges, doodles: flowDoodles });
+                                    setSelectedNodeId(nextNode.id);
+                                    return;
+                                }
                                 if (editorMode === 'mind' && activeTool === 'topic') {
                                     const topic = createMindRootNode(position, 'Topic');
                                     const nextNodes = [...mindNodes, topic];
@@ -1579,6 +1583,7 @@ function DiagramEditorContent() {
                         </ReactFlow>
                         {editorMode !== 'db' && editMode && (selectedNodeId || selectedEdgeId) && (
                             <SelectionInspector
+                                mode={editorMode}
                                 selectedNode={(editorMode === 'flow' ? flowNodes : mindNodes).find((n) => n.id === selectedNodeId) ?? null}
                                 selectedEdge={(editorMode === 'flow' ? flowEdges : mindEdges).find((e) => e.id === selectedEdgeId) ?? null}
                                 onUpdateNode={(updates) => {
