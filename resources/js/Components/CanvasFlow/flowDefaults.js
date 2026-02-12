@@ -1,10 +1,17 @@
 import { SHAPE_KEYS, SHAPE_REGISTRY } from '@/Components/CanvasFlow/shapeRegistry';
+import { MarkerType } from 'reactflow';
 
 const byType = {
     ...Object.fromEntries(SHAPE_KEYS.map((shapeKey) => [shapeKey, 'flowShape'])),
     text: 'flowText',
     sticky: 'flowSticky',
     group: 'flowGroup',
+};
+
+export const FLOW_EDGE_DEFAULTS = {
+    type: 'bezier',
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#475569' },
+    style: { stroke: '#64748b', strokeWidth: 2 },
 };
 
 export function createFlowNode(nodeType, position = { x: 120, y: 120 }, size = null, style = {}) {

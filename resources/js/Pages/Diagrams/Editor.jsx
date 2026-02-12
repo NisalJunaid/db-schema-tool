@@ -1,7 +1,7 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toBlob, toPng } from 'html-to-image';
-import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, getRectOfNodes, getViewportForBounds, MarkerType } from 'reactflow';
+import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, getRectOfNodes, getViewportForBounds } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
 import Sidebar from '@/Components/Diagram/Sidebar';
@@ -19,7 +19,7 @@ import FlowSidebar from '@/Components/CanvasFlow/FlowSidebar';
 import FlowToolbar from '@/Components/CanvasFlow/FlowToolbar';
 import FloatingShapeToolbar from '@/Components/CanvasFlow/FloatingShapeToolbar';
 import { flowNodeTypes } from '@/Components/CanvasFlow/flowTypes';
-import { createFlowNode } from '@/Components/CanvasFlow/flowDefaults';
+import { createFlowNode, FLOW_EDGE_DEFAULTS } from '@/Components/CanvasFlow/flowDefaults';
 import { SHAPE_REGISTRY, SHAPE_KEYS } from '@/Components/CanvasFlow/shapeRegistry';
 import MindSidebar from '@/Components/CanvasMind/MindSidebar';
 import FloatingToolbox from '@/Components/CanvasUI/FloatingToolbox';
@@ -135,6 +135,8 @@ function DiagramEditorContent() {
     const [toolStyle, setToolStyle] = useState({ fill: '#ffffff', stroke: '#475569', borderStyle: 'solid', textSize: 'md' });
     const [showInk, setShowInk] = useState(true);
     const [selectedDoodleId, setSelectedDoodleId] = useState(null);
+    const [isConnecting, setIsConnecting] = useState(false);
+    const [hoverTargetNodeId, setHoverTargetNodeId] = useState(null);
     const [flowDoodles, setFlowDoodles] = useState(Array.isArray(initialDiagramPayload?.flow_state?.doodles) ? initialDiagramPayload.flow_state.doodles : []);
     const [mindDoodles, setMindDoodles] = useState(Array.isArray(initialDiagramPayload?.mind_state?.doodles) ? initialDiagramPayload.mind_state.doodles : []);
     const [activeStroke, setActiveStroke] = useState(null);
@@ -176,6 +178,13 @@ function DiagramEditorContent() {
     useEffect(() => {
         latestFlowStateRef.current = { nodes: flowNodes, edges: flowEdges };
     }, [flowEdges, flowNodes]);
+
+    useEffect(() => {
+        if (editorMode !== 'flow') {
+            setIsConnecting(false);
+            setHoverTargetNodeId(null);
+        }
+    }, [editorMode]);
 
     useEffect(() => {
         if (!TOOL_COMPATIBILITY_MAP[activeTool]) return;
@@ -784,9 +793,7 @@ function DiagramEditorContent() {
 
         const nextEdge = {
             id: `edge-${crypto.randomUUID()}`,
-            type: 'bezier',
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#475569' },
-            style: { stroke: '#64748b', strokeWidth: 2 },
+            ...FLOW_EDGE_DEFAULTS,
             ...connection,
             label: '',
         };
@@ -1385,6 +1392,7 @@ function DiagramEditorContent() {
                 onResizeEnd: editorMode === 'flow'
                     ? () => commitFlowState(latestFlowStateRef.current.nodes, latestFlowStateRef.current.edges)
                     : undefined,
+                showHoverHandles: editorMode === 'flow' && isConnecting && hoverTargetNodeId === node.id,
             },
         }));
 
@@ -1414,7 +1422,7 @@ function DiagramEditorContent() {
         };
 
         return [...mappedNodes, previewNode];
-    }, [activeNodes, activeTool, canEdit, commitFlowLabel, commitFlowState, commitMindLabel, editMode, editorMode, handleToggleMindCollapse, hoverPreview, showInk]);
+    }, [activeNodes, activeTool, canEdit, commitFlowLabel, commitFlowState, commitMindLabel, editMode, editorMode, handleToggleMindCollapse, hoverPreview, hoverTargetNodeId, isConnecting, showInk]);
 
     const submitAddTable = async (event) => {
         event.preventDefault();
@@ -1745,6 +1753,10 @@ function DiagramEditorContent() {
                             onNodesChange={onNodesChange}
                             onNodeDragStop={onNodeDragStop}
                             onConnect={onConnect}
+                            onConnectStart={() => setIsConnecting(true)}
+                            onConnectEnd={() => { setIsConnecting(false); setHoverTargetNodeId(null); }}
+                            onNodeMouseEnter={(_, node) => { if (isConnecting) setHoverTargetNodeId(node.id); }}
+                            onNodeMouseLeave={(_, node) => { if (isConnecting) setHoverTargetNodeId((current) => (current === node.id ? null : current)); }}
                             onNodeClick={onNodeClick}
                             onEdgeClick={onEdgeClick}
                             onEdgeDoubleClick={onEdgeDoubleClick}
@@ -1791,9 +1803,9 @@ function DiagramEditorContent() {
                                 setSelectedEdgeId(firstEdge?.id ?? null);
                             }}
                             proOptions={{ hideAttribution: true }}
-                            defaultEdgeOptions={{ type: 'bezier' }}
+                            defaultEdgeOptions={editorMode === 'flow' ? FLOW_EDGE_DEFAULTS : { type: 'bezier' }}
                             connectionMode={editorMode === 'db' ? 'strict' : (isFlow ? 'loose' : (activeTool === 'connector' ? 'loose' : 'strict'))}
-                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode : canEdit && editMode && activeTool === 'connector'}
+                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : isFlow ? canEdit && editMode : canEdit && editMode && activeTool === 'connector'}
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
                             {showMiniMap && <MiniMap position="bottom-right" pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
