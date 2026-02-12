@@ -149,6 +149,11 @@ function DiagramEditorContent() {
         relationships: cloneState(sourceRelationships),
     }), []);
 
+    const buildCanvasSnapshot = useCallback((sourceNodes, sourceEdges) => ({
+        nodes: cloneState(sourceNodes),
+        edges: cloneState(sourceEdges),
+    }), []);
+
     const commitEditorState = useCallback((nextTables, nextRelationships, previousTables = tables, previousRelationships = relationships) => {
         setHistory((current) => ({
             past: [...current.past, buildSnapshot(previousTables, previousRelationships)],
