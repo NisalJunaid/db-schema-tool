@@ -3,6 +3,8 @@ const byType = {
     roundRect: 'flowShape',
     diamond: 'flowShape',
     ellipse: 'flowShape',
+    parallelogram: 'flowShape',
+    cylinder: 'flowShape',
     text: 'flowText',
     sticky: 'flowSticky',
     group: 'flowGroup',

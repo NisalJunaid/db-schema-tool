@@ -1,3 +1,5 @@
+import ShapeSidebar from '@/Components/CanvasFlow/ShapeSidebar';
+
 const TOOL_GROUPS = [
     {
         label: 'Navigation',
@@ -9,10 +11,7 @@ const TOOL_GROUPS = [
     {
         label: 'Shapes',
         tools: [
-            { key: 'rect', icon: 'fa-regular fa-square', title: 'Process (drag)' },
-            { key: 'rounded', icon: 'fa-regular fa-square-full', title: 'Terminator (drag)' },
-            { key: 'diamond', icon: 'fa-regular fa-gem', title: 'Decision (drag)' },
-            { key: 'circle', icon: 'fa-regular fa-circle', title: 'Connector (drag)' },
+            { key: 'shapes', icon: 'fa-solid fa-shapes', title: 'Shapes' },
         ],
     },
     {
@@ -37,7 +36,28 @@ const TOOL_GROUPS = [
     },
 ];
 
-export default function FlowToolbar({ activeTool, onSelectTool, editMode = false, showInk = true, onToggleInk }) {
+export default function FlowToolbar({
+    activeTool,
+    onSelectTool,
+    editMode = false,
+    showInk = true,
+    onToggleInk,
+    toolbarMode = 'default',
+    onSetToolbarMode,
+    activeShape = null,
+    onSelectShape,
+}) {
+    if (toolbarMode === 'shapes') {
+        return (
+            <ShapeSidebar
+                activeShape={activeShape}
+                editMode={editMode}
+                onSelectShape={onSelectShape}
+                onClose={() => onSetToolbarMode?.('default')}
+            />
+        );
+    }
+
     return (
         <div className="pointer-events-auto absolute left-3 top-1/2 z-50 flex -translate-y-1/2 flex-col gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 shadow-lg">
             {TOOL_GROUPS.map((group, groupIndex) => (
@@ -46,8 +66,9 @@ export default function FlowToolbar({ activeTool, onSelectTool, editMode = false
                     {group.tools.map((tool) => {
                         const isToggle = tool.key === 'toggle-ink';
                         const icon = isToggle ? (showInk ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash') : tool.icon;
+                        const isShapesButton = tool.key === 'shapes';
                         const disabled = !editMode && !isToggle;
-                        const isActive = isToggle ? false : activeTool === tool.key;
+                        const isActive = isToggle ? false : (isShapesButton ? toolbarMode === 'shapes' : activeTool === tool.key);
 
                         return (
                             <button
@@ -56,7 +77,19 @@ export default function FlowToolbar({ activeTool, onSelectTool, editMode = false
                                 title={tool.title}
                                 aria-label={tool.title}
                                 disabled={disabled}
-                                onClick={() => (isToggle ? onToggleInk?.() : onSelectTool?.(tool.key))}
+                                onClick={() => {
+                                    if (isToggle) {
+                                        onToggleInk?.();
+                                        return;
+                                    }
+
+                                    if (isShapesButton) {
+                                        onSetToolbarMode?.('shapes');
+                                        return;
+                                    }
+
+                                    onSelectTool?.(tool.key);
+                                }}
                                 className={`pointer-events-auto flex h-9 w-9 items-center justify-center rounded-md border ${isActive ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-transparent text-slate-700 hover:bg-slate-100'} disabled:cursor-not-allowed disabled:opacity-50`}
                             >
                                 <i className={icon} />

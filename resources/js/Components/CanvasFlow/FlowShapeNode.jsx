@@ -15,6 +15,8 @@ const textSizeClassMap = {
 export default function FlowShapeNode({ id, data, selected }) {
     const shape = data?.shapeType ?? data?.shape ?? 'rect';
     const isDiamond = shape === 'diamond';
+    const isParallelogram = shape === 'parallelogram';
+    const isCylinder = shape === 'cylinder';
 
     const updateLabel = (nextLabel) => {
         const trimmed = (nextLabel ?? '').trim();
@@ -34,7 +36,8 @@ export default function FlowShapeNode({ id, data, selected }) {
                     backgroundColor: data?.fill ?? data?.fillColor ?? '#fff',
                     borderColor: data?.stroke ?? data?.borderColor ?? '#475569',
                     borderStyle: data?.borderStyle ?? 'solid',
-                    transform: isDiamond ? 'rotate(45deg)' : undefined,
+                    transform: isDiamond ? 'rotate(45deg)' : (isParallelogram ? 'skew(-18deg)' : undefined),
+                    borderRadius: isCylinder ? '999px / 22px' : undefined,
                 }}
             >
                 <div
@@ -43,7 +46,7 @@ export default function FlowShapeNode({ id, data, selected }) {
                     onBlur={(event) => updateLabel(event.target.innerText)}
                     onMouseDown={(event) => event.stopPropagation()}
                     className={`nodrag nopan outline-none text-center text-slate-700 ${textSizeClassMap[data?.textSize ?? data?.fontSize ?? 'md'] ?? 'text-sm'}`}
-                    style={{ transform: isDiamond ? 'rotate(-45deg)' : undefined }}
+                    style={{ transform: isDiamond ? 'rotate(-45deg)' : (isParallelogram ? 'skew(18deg)' : undefined) }}
                 >
                     {data?.label ?? data?.text ?? 'Shape'}
                 </div>
