@@ -18,15 +18,21 @@ export default function FlowShapeNode({ data, selected }) {
             <Handle type="source" position={Position.Right} />
             <Handle type="source" position={Position.Bottom} />
             <div
-                className={`min-w-[150px] border bg-white px-4 py-3 shadow-sm ${selected ? 'ring-2 ring-indigo-300' : ''} ${radiusByShape[shape] ?? 'rounded-md'}`}
+                className={`min-w-[150px] border px-4 py-3 shadow-md transition-all duration-150 hover:shadow-lg hover:shadow-indigo-100 ${selected ? 'ring-2 ring-indigo-300' : ''} ${radiusByShape[shape] ?? 'rounded-xl'}`}
                 style={{
                     backgroundColor: data?.fillColor,
                     borderColor: data?.borderColor,
                     borderStyle: data?.borderStyle ?? 'solid',
                     transform: isDiamond ? 'rotate(45deg)' : undefined,
+                    transition: 'transform 0.15s ease',
                 }}
             >
-                <p className={`text-slate-700 ${font}`} style={{ transform: isDiamond ? 'rotate(-45deg)' : undefined }}>{data?.text}</p>
+                <p
+                    className={`text-slate-700 ${font}`}
+                    style={{ transform: isDiamond ? 'rotate(-45deg)' : undefined, textAlign: data?.textAlign ?? 'center' }}
+                >
+                    {data?.text}
+                </p>
             </div>
         </>
     );

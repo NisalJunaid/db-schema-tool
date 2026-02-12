@@ -19,6 +19,8 @@ import FlowSidebar from '@/Components/CanvasFlow/FlowSidebar';
 import { flowNodeTypes } from '@/Components/CanvasFlow/flowTypes';
 import { createFlowNode } from '@/Components/CanvasFlow/flowDefaults';
 import MindSidebar from '@/Components/CanvasMind/MindSidebar';
+import FloatingCanvasToolbar from '@/Components/CanvasShared/FloatingCanvasToolbar';
+import SelectionToolbar from '@/Components/CanvasShared/SelectionToolbar';
 import { mindNodeTypes } from '@/Components/CanvasMind/mindTypes';
 import { collectDescendantIds } from '@/Components/CanvasMind/mindLayout';
 import { createMindChildNode, createMindRootNode } from '@/Components/CanvasMind/mindDefaults';
@@ -102,6 +104,10 @@ function DiagramEditorContent() {
     const [selectedEdgeId, setSelectedEdgeId] = useState(null);
     const [showMiniMap, setShowMiniMap] = useState(true);
     const [showGrid, setShowGrid] = useState(true);
+    const [activeTool, setActiveTool] = useState('select');
+    const [dragCreating, setDragCreating] = useState(null);
+    const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
+    const [selectionToolbarPosition, setSelectionToolbarPosition] = useState(null);
     const [editModeNotice, setEditModeNotice] = useState('');
     const [history, setHistory] = useState({ past: [], present: null, future: [] });
     const [flowHistory, setFlowHistory] = useState({ past: [], present: null, future: [] });
@@ -342,6 +348,11 @@ function DiagramEditorContent() {
         }
     }, [canEdit, editMode]);
 
+    useEffect(() => {
+        if (editorMode === 'db') return;
+        setActiveTool('select');
+    }, [editorMode]);
+
     useEffect(() => () => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
         if (editModeNoticeTimerRef.current) clearTimeout(editModeNoticeTimerRef.current);
@@ -514,13 +525,20 @@ function DiagramEditorContent() {
         };
     }).filter(Boolean), [relationships, selectedEdgeId, columnToTableMap]);
 
-    const activeNodes = editorMode === 'db' ? nodes : editorMode === 'flow' ? flowNodes : mindNodes;
+    const activeNodes = useMemo(() => {
+        if (editorMode === 'db') return nodes;
+        if (editorMode === 'flow') return flowNodes;
+
+        const hiddenIds = new Set(mindNodes.filter((node) => node.data?.collapsed).flatMap((node) => collectDescendantIds(node.id, mindNodes)));
+        return mindNodes.filter((node) => !hiddenIds.has(node.id));
+    }, [editorMode, flowNodes, mindNodes, nodes]);
+
     const activeEdges = useMemo(() => {
         if (editorMode === 'db') return edges;
         if (editorMode === 'flow') return flowEdges;
 
-        const collapsedIds = new Set(mindNodes.filter((node) => node.data?.collapsed).flatMap((node) => collectDescendantIds(node.id, mindNodes)));
-        return mindEdges.filter((edge) => !collapsedIds.has(edge.source) && !collapsedIds.has(edge.target));
+        const hiddenIds = new Set(mindNodes.filter((node) => node.data?.collapsed).flatMap((node) => collectDescendantIds(node.id, mindNodes)));
+        return mindEdges.filter((edge) => !hiddenIds.has(edge.source) && !hiddenIds.has(edge.target));
     }, [editorMode, edges, flowEdges, mindEdges, mindNodes]);
 
     const commitFlowState = useCallback((nextNodes, nextEdges, previousNodes = flowNodes, previousEdges = flowEdges) => {
@@ -543,6 +561,37 @@ function DiagramEditorContent() {
         setMindEdges(nextEdges);
     }, [buildCanvasSnapshot, mindEdges, mindNodes]);
 
+
+    const toFlowPoint = useCallback((clientX, clientY) => {
+        const instance = reactFlowRef.current;
+        if (!instance) return { x: 0, y: 0 };
+        if (typeof instance.screenToFlowPosition === 'function') {
+            return instance.screenToFlowPosition({ x: clientX, y: clientY });
+        }
+        if (typeof instance.project === 'function') {
+            return instance.project({ x: clientX, y: clientY });
+        }
+        return { x: 0, y: 0 };
+    }, []);
+
+    const addMindSibling = useCallback(() => {
+        if (!canEdit || !editMode || !selectedNodeId) return;
+        const selected = mindNodes.find((node) => node.id === selectedNodeId);
+        if (!selected?.data?.parentId) return;
+        const parent = mindNodes.find((node) => node.id === selected.data.parentId);
+        if (!parent) return;
+        const siblingsCount = mindNodes.filter((node) => node.data?.parentId === parent.id).length;
+        const sibling = createMindChildNode(parent, siblingsCount);
+        commitMindState([...mindNodes, sibling], [...mindEdges, { id: `edge-${crypto.randomUUID()}`, source: parent.id, target: sibling.id, type: 'bezier', style: { stroke: parent.data?.branchColor ?? '#94a3b8', strokeWidth: 2 } }]);
+        setSelectedNodeId(sibling.id);
+    }, [canEdit, commitMindState, editMode, mindEdges, mindNodes, selectedNodeId]);
+
+    const addMindFloatingTopic = useCallback((position = { x: 120, y: 120 }) => {
+        if (!canEdit || !editMode) return;
+        const topic = createMindRootNode(position, 'Floating topic');
+        commitMindState([...mindNodes, topic], mindEdges);
+        setSelectedNodeId(topic.id);
+    }, [canEdit, commitMindState, editMode, mindEdges, mindNodes]);
 
     const onNodesChange = useCallback((changes) => {
         if (editorMode === 'db') {
@@ -611,7 +660,13 @@ function DiagramEditorContent() {
     }, []);
 
     const onEdgeDoubleClick = useCallback((_, edge) => {
-        if (editorMode !== 'db' || !canEdit || !editMode) return;
+        if (!canEdit || !editMode) return;
+
+        if (editorMode !== 'db') {
+            setSelectedEdgeId(edge.id);
+            return;
+        }
+
         const relationship = relationships.find((entry) => String(entry.id) === String(edge.id));
         if (!relationship) return;
         setRelationshipDraft(relationship);
@@ -735,12 +790,29 @@ function DiagramEditorContent() {
             const selected = mindNodes.find((node) => node.id === selectedNodeId);
             if (!selected) return;
 
+            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                event.preventDefault();
+                const viewport = reactFlowRef.current?.getViewport?.() ?? { x: 0, y: 0, zoom: 1 };
+                const topic = createMindRootNode({ x: Math.round(-viewport.x / viewport.zoom + 180), y: Math.round(-viewport.y / viewport.zoom + 150) }, 'Floating topic');
+                commitMindState([...mindNodes, topic], mindEdges);
+                setSelectedNodeId(topic.id);
+                return;
+            }
+
+            if (event.key === 'Tab' && event.shiftKey) {
+                event.preventDefault();
+                if (selected.data?.parentId) setSelectedNodeId(selected.data.parentId);
+                return;
+            }
+
             if (event.key === 'Tab') {
                 event.preventDefault();
                 const childrenCount = mindNodes.filter((node) => node.data?.parentId === selected.id).length;
                 const child = createMindChildNode(selected, childrenCount);
-                commitMindState([...mindNodes, child], [...mindEdges, { id: `edge-${crypto.randomUUID()}`, source: selected.id, target: child.id, type: 'bezier', style: { stroke: selected.data?.branchColor ?? '#94a3b8', strokeWidth: 2 } }]);
+                const expandedNodes = mindNodes.map((node) => (node.id === selected.id ? { ...node, data: { ...node.data, collapsed: false } } : node));
+                commitMindState([...expandedNodes, child], [...mindEdges, { id: `edge-${crypto.randomUUID()}`, source: selected.id, target: child.id, type: 'bezier', style: { stroke: selected.data?.branchColor ?? '#94a3b8', strokeWidth: 2 } }]);
                 setSelectedNodeId(child.id);
+                return;
             }
 
             if (event.key === 'Enter' && selected.data?.parentId) {
@@ -758,14 +830,18 @@ function DiagramEditorContent() {
     }, [canEdit, commitMindState, deleteSelection, editMode, editorMode, mindEdges, mindNodes, selectedEdgeId, selectedNodeId]);
 
     const miniMapNodeColor = useCallback((node) => {
+        if (editorMode === 'flow') return node?.data?.fillColor ?? '#cbd5e1';
+        if (editorMode === 'mind') return node?.data?.branchColor ?? '#94a3b8';
         const colorValue = node?.data?.table?.color ?? node?.data?.color;
         return getTableColorMeta(colorValue).solid;
-    }, []);
+    }, [editorMode]);
 
     const miniMapNodeStrokeColor = useCallback((node) => {
+        if (editorMode === 'flow') return node?.data?.borderColor ?? '#64748b';
+        if (editorMode === 'mind') return node?.data?.branchColor ?? '#64748b';
         const colorValue = node?.data?.table?.color ?? node?.data?.color;
         return getTableColorMeta(colorValue).solid;
-    }, []);
+    }, [editorMode]);
 
     const submitRelationship = async (event) => {
         event.preventDefault();
@@ -893,10 +969,11 @@ function DiagramEditorContent() {
         setMindNodes((current) => current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...patch } } : node)));
     }, [canEdit, editMode]);
 
-    const addFlowNode = useCallback((nodeType) => {
+    const addFlowNode = useCallback((nodeType, position = null) => {
         if (!canEdit || !editMode) return;
         const viewport = reactFlowRef.current?.getViewport?.() ?? { x: 0, y: 0, zoom: 1 };
-        const nextNode = createFlowNode(nodeType, { x: Math.round(-viewport.x / viewport.zoom + 220), y: Math.round(-viewport.y / viewport.zoom + 120) });
+        const nodePosition = position ?? { x: Math.round(-viewport.x / viewport.zoom + 220), y: Math.round(-viewport.y / viewport.zoom + 120) };
+        const nextNode = createFlowNode(nodeType, nodePosition);
         commitFlowState([...flowNodes, nextNode], flowEdges);
         setSelectedNodeId(nextNode.id);
     }, [canEdit, commitFlowState, editMode, flowEdges, flowNodes]);
@@ -914,7 +991,8 @@ function DiagramEditorContent() {
         if (!parent) return;
         const siblings = mindNodes.filter((node) => node.data?.parentId === parent.id).length;
         const child = createMindChildNode(parent, siblings);
-        commitMindState([...mindNodes, child], [...mindEdges, { id: `edge-${crypto.randomUUID()}`, source: parent.id, target: child.id, type: 'bezier', style: { stroke: parent.data?.branchColor ?? '#94a3b8', strokeWidth: 2 } }]);
+        const expandedNodes = mindNodes.map((node) => (node.id === parent.id ? { ...node, data: { ...node.data, collapsed: false } } : node));
+        commitMindState([...expandedNodes, child], [...mindEdges, { id: `edge-${crypto.randomUUID()}`, source: parent.id, target: child.id, type: 'bezier', style: { stroke: parent.data?.branchColor ?? '#94a3b8', strokeWidth: 2 } }]);
         setSelectedNodeId(child.id);
     }, [canEdit, commitMindState, editMode, mindEdges, mindNodes, selectedNodeId]);
 
@@ -1205,23 +1283,91 @@ function DiagramEditorContent() {
                         </div>
                     )}
 
-                    <div className="m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div className="relative m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+
+                        <FloatingCanvasToolbar
+                            editorMode={editorMode}
+                            activeTool={activeTool}
+                            setActiveTool={setActiveTool}
+                            onAddNode={addFlowNode}
+                            onAddChild={addMindChild}
+                            onAddSibling={addMindSibling}
+                            onToggleMiniMap={() => setShowMiniMap((current) => !current)}
+                            showMiniMap={showMiniMap}
+                        />
                         <ReactFlow
                             nodes={Array.isArray(activeNodes) ? activeNodes : []}
                             edges={Array.isArray(activeEdges) ? activeEdges : []}
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            nodesDraggable={canEdit && editMode}
+                            panOnDrag={editorMode !== 'db' ? activeTool === 'pan' : true}
+                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : activeTool === 'select' && canEdit && editMode}
+                            elementsSelectable={editorMode === 'db' ? true : activeTool === 'select'}
+                            selectionOnDrag
+                            snapToGrid={editorMode !== 'db'}
+                            snapGrid={[15, 15]}
                             onNodesChange={onNodesChange}
                             onNodeDragStop={onNodeDragStop}
                             onConnect={onConnect}
                             onNodeClick={onNodeClick}
                             onEdgeClick={onEdgeClick}
                             onEdgeDoubleClick={onEdgeDoubleClick}
-                            onPaneClick={() => { setSelectedEdgeId(null); setSelectedNodeId(null); }}
+                            onPaneMouseMove={(event) => {
+                                setCursorPosition({ x: event.clientX + 10, y: event.clientY + 10 });
+                                if (editorMode === 'flow' && dragCreating) {
+                                    const point = toFlowPoint(event.clientX, event.clientY);
+                                    setDragCreating((current) => (current ? { ...current, current: point } : current));
+                                }
+                            }}
+                            onPaneMouseDown={(event) => {
+                                if (!(canEdit && editMode) || editorMode !== 'flow' || !['rect', 'diamond', 'circle'].includes(activeTool)) return;
+                                const start = toFlowPoint(event.clientX, event.clientY);
+                                setDragCreating({ start, current: start, tool: activeTool });
+                            }}
+                            onPaneMouseUp={() => {
+                                if (!(canEdit && editMode) || !dragCreating || editorMode !== 'flow') return;
+                                const width = Math.abs(dragCreating.current.x - dragCreating.start.x);
+                                const height = Math.abs(dragCreating.current.y - dragCreating.start.y);
+                                const position = { x: Math.min(dragCreating.start.x, dragCreating.current.x), y: Math.min(dragCreating.start.y, dragCreating.current.y) };
+                                const nodeType = dragCreating.tool === 'rect' ? 'rectangle' : dragCreating.tool;
+                                const nextNode = createFlowNode(nodeType, position, { width: width || 160, height: height || 100 });
+                                commitFlowState([...flowNodes, nextNode], flowEdges);
+                                setSelectedNodeId(nextNode.id);
+                                setDragCreating(null);
+                                setActiveTool('select');
+                            }}
+                            onPaneClick={(event) => {
+                                setSelectedEdgeId(null);
+                                setSelectedNodeId(null);
+                                if (!(canEdit && editMode) || editorMode === 'db') return;
+                                const position = toFlowPoint(event.clientX, event.clientY);
+                                if (editorMode === 'flow' && activeTool !== 'select' && activeTool !== 'pan' && activeTool !== 'arrow' && !['rect', 'diamond', 'circle'].includes(activeTool)) {
+                                    const map = { text: 'text', sticky: 'sticky' };
+                                    const nextNode = createFlowNode(map[activeTool] ?? 'rectangle', position);
+                                    commitFlowState([...flowNodes, nextNode], flowEdges);
+                                    setSelectedNodeId(nextNode.id);
+                                    setActiveTool('select');
+                                }
+                                if (editorMode === 'mind' && activeTool === 'topic') {
+                                    addMindFloatingTopic(position);
+                                    setActiveTool('select');
+                                }
+                            }}
                             onEdgesChange={onEdgesChange}
                             onMoveEnd={(_, viewport) => handleViewportSave(viewport)}
+                            onSelectionChange={({ nodes: selectedNodes, edges: selectedEdges }) => {
+                                const firstNode = selectedNodes?.[0] ?? null;
+                                const firstEdge = selectedEdges?.[0] ?? null;
+                                if (firstNode) setSelectedNodeId(firstNode.id);
+                                if (firstEdge) setSelectedEdgeId(firstEdge.id);
+                                const pos = firstNode
+                                    ? { x: (firstNode.positionAbsolute?.x ?? firstNode.position.x) + 80, y: (firstNode.positionAbsolute?.y ?? firstNode.position.y) - 18 }
+                                    : firstEdge
+                                        ? { x: 280, y: 18 }
+                                        : null;
+                                setSelectionToolbarPosition(pos);
+                            }}
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={{ type: 'bezier' }}
                             connectionMode={editorMode === 'db' ? 'strict' : 'loose'}
@@ -1237,6 +1383,39 @@ function DiagramEditorContent() {
                                 </Controls>
                             )}
                         </ReactFlow>
+                        {editorMode !== 'db' && dragCreating && (
+                            <div
+                                className="pointer-events-none absolute rounded-lg border border-indigo-400 bg-indigo-100/30"
+                                style={{
+                                    left: Math.min(dragCreating.start.x, dragCreating.current.x),
+                                    top: Math.min(dragCreating.start.y, dragCreating.current.y),
+                                    width: Math.abs(dragCreating.current.x - dragCreating.start.x),
+                                    height: Math.abs(dragCreating.current.y - dragCreating.start.y),
+                                }}
+                            />
+                        )}
+                        <SelectionToolbar
+                            editorMode={editorMode}
+                            position={selectionToolbarPosition}
+                            selectedNode={activeNodes.find((node) => node.id === selectedNodeId)}
+                            selectedEdge={activeEdges.find((edge) => edge.id === selectedEdgeId)}
+                            editMode={canEdit && editMode}
+                            onUpdateNode={editorMode === 'flow' ? updateFlowNodeData : updateMindNodeData}
+                            onUpdateEdge={(edgeId, patch) => {
+                                if (editorMode === 'flow') setFlowEdges((current) => current.map((edge) => (edge.id === edgeId ? { ...edge, ...patch } : edge)));
+                                if (editorMode === 'mind') setMindEdges((current) => current.map((edge) => (edge.id === edgeId ? { ...edge, ...patch } : edge)));
+                            }}
+                            onDelete={deleteSelection}
+                            onToggleCollapse={() => updateMindNodeData(selectedNodeId, { collapsed: !(mindNodes.find((node) => node.id === selectedNodeId)?.data?.collapsed) })}
+                            onBringForward={() => setFlowNodes((current) => current.map((node) => (node.id === selectedNodeId ? { ...node, zIndex: (node.zIndex ?? 0) + 1 } : node)))}
+                            onSendBackward={() => setFlowNodes((current) => current.map((node) => (node.id === selectedNodeId ? { ...node, zIndex: Math.max(0, (node.zIndex ?? 1) - 1) } : node)))}
+                        />
+                        {editorMode !== 'db' && activeTool !== 'select' && (
+                            <div className="cursor-tool fixed z-40 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs shadow" style={{ left: cursorPosition.x, top: cursorPosition.y }}>
+                                <i className="fa-solid fa-wand-magic-sparkles mr-1" aria-hidden="true" />
+                                {activeTool}
+                            </div>
+                        )}
                     </div>
                 </div>
             </section>

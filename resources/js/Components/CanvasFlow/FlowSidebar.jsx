@@ -20,6 +20,7 @@ export default function FlowSidebar({
                 <h3 className="text-sm font-semibold text-slate-800">Flowchart</h3>
                 <button type="button" onClick={onToggleCollapse} className="text-xs text-slate-500">Collapse</button>
             </div>
+            <p className="mb-3 text-[11px] text-slate-500">Tip: Use the floating toolbar for quick add and drag-to-create.</p>
             <div className="space-y-2">
                 <button type="button" className={addButtonClass} onClick={() => onAddNode('rectangle')}>+ Rectangle</button>
                 <button type="button" className={addButtonClass} onClick={() => onAddNode('diamond')}>+ Diamond</button>
