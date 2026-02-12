@@ -84,9 +84,11 @@ function ShapeSvg({ shape, fill, stroke, strokeWidth, strokeStyle, opacity, shad
 
 export default function FlowShapeNode({ id, data, selected }) {
     const shape = data?.shapeType ?? data?.shape ?? 'rect';
+    const showAllHandles = Boolean(data?.showHandlesAll);
     const showHoverHandles = Boolean(data?.showHoverHandles);
-    const showHandles = selected || showHoverHandles || Boolean(data?.showAllHandles);
-    const handleOpacity = selected || data?.showAllHandles ? 1 : (showHoverHandles ? 0.3 : 0);
+    const showHandles = selected || showHoverHandles || showAllHandles;
+    const isConnectable = Boolean(data?.connectable);
+    const handleOpacity = selected ? 1 : (showHoverHandles ? 0.3 : (showAllHandles ? 0.9 : 0));
     const handleStyle = {
         width: 10,
         height: 10,
@@ -116,6 +118,7 @@ export default function FlowShapeNode({ id, data, selected }) {
                     id={handle.id}
                     type={handle.type}
                     position={handle.side}
+                    isConnectable={isConnectable}
                     style={{ ...handle.style, ...handleStyle }}
                 />
             ))}
