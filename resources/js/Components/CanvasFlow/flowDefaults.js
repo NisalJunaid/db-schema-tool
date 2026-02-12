@@ -1,52 +1,40 @@
-export const flowPalette = {
-    slate: { fill: '#f8fafc', border: '#64748b' },
-    indigo: { fill: '#eef2ff', border: '#4f46e5' },
-    emerald: { fill: '#ecfdf5', border: '#059669' },
-    amber: { fill: '#fffbeb', border: '#d97706' },
-    rose: { fill: '#fff1f2', border: '#e11d48' },
-};
-
 const byType = {
-    rectangle: 'flowShape',
-    rounded: 'flowShape',
+    rect: 'flowShape',
+    roundRect: 'flowShape',
     diamond: 'flowShape',
-    circle: 'flowShape',
+    ellipse: 'flowShape',
     text: 'flowText',
     sticky: 'flowSticky',
     group: 'flowGroup',
 };
 
-export function createFlowNode(nodeType, position = { x: 120, y: 120 }, size = null) {
-    const palette = flowPalette.indigo;
+export function createFlowNode(nodeType, position = { x: 120, y: 120 }, size = null, style = {}) {
     const id = `flow-${crypto.randomUUID()}`;
-    const style = size ? { width: Math.max(80, Math.round(size.width)), height: Math.max(60, Math.round(size.height)), transition: 'transform 0.15s ease' } : { transition: 'transform 0.15s ease' };
+    const shapeType = nodeType === 'rectangle' ? 'rect' : nodeType === 'rounded' ? 'roundRect' : nodeType === 'circle' ? 'ellipse' : nodeType;
+    const width = Math.max(80, Math.round(size?.width ?? (shapeType === 'text' ? 140 : 160)));
+    const height = Math.max(40, Math.round(size?.height ?? (shapeType === 'sticky' ? 110 : 90)));
 
-    if (nodeType === 'text') {
-        return { id, type: 'flowText', position, style, data: { text: 'Text', fontSize: 'md', color: '#0f172a' } };
-    }
+    const shared = {
+        id,
+        type: byType[shapeType] ?? 'flowShape',
+        position,
+        style: { width, height },
+    };
 
-    if (nodeType === 'sticky') {
-        return { id, type: 'flowSticky', position, style, data: { text: 'Sticky note', fillColor: '#fef08a', borderColor: '#ca8a04', borderStyle: 'solid', lockPosition: false, tone: 'yellow' } };
-    }
-
-    if (nodeType === 'group') {
-        return { id, type: 'flowGroup', position, data: { text: 'Group', fillColor: '#e2e8f0', borderColor: '#64748b', borderStyle: 'dashed', lockPosition: false }, style: size ?? { width: 320, height: 220, transition: 'transform 0.15s ease' } };
-    }
+    if (shapeType === 'text') return { ...shared, data: { label: 'Text', text: 'Text', textSize: style.textSize ?? 'md', ...style } };
+    if (shapeType === 'sticky') return { ...shared, data: { label: 'Sticky note', text: 'Sticky note', fill: style.fill ?? '#fef08a', stroke: style.stroke ?? '#ca8a04', ...style } };
 
     return {
-        id,
-        type: byType[nodeType] ?? 'flowShape',
-        position,
-        style,
+        ...shared,
         data: {
+            label: 'Shape',
             text: 'Shape',
-            shape: nodeType,
-            fillColor: palette.fill,
-            borderColor: palette.border,
-            borderStyle: 'solid',
-            textAlign: 'center',
-            fontSize: 'md',
-            lockPosition: false,
+            shapeType,
+            fill: style.fill ?? '#ffffff',
+            stroke: style.stroke ?? '#475569',
+            borderStyle: style.borderStyle ?? 'solid',
+            textSize: style.textSize ?? 'md',
+            ...style,
         },
     };
 }

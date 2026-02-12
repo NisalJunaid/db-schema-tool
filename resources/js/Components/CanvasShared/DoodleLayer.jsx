@@ -1,0 +1,52 @@
+import { useMemo, useState } from 'react';
+
+const toPath = (points = []) => points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+
+export default function DoodleLayer({
+    enabled,
+    visible,
+    doodles,
+    activeStroke,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+}) {
+    const [hovered, setHovered] = useState(null);
+    const rendered = useMemo(() => (Array.isArray(doodles) ? doodles : []), [doodles]);
+
+    if (!visible) return null;
+
+    return (
+        <div
+            className={`absolute inset-0 z-30 ${enabled ? 'pointer-events-auto' : 'pointer-events-none'}`}
+            onMouseDown={enabled ? onPointerDown : undefined}
+            onMouseMove={enabled ? onPointerMove : undefined}
+            onMouseUp={enabled ? onPointerUp : undefined}
+            onMouseLeave={enabled ? onPointerUp : undefined}
+        >
+            <svg className="absolute inset-0 h-full w-full">
+                {rendered.map((doodle) => (
+                    <path
+                        key={doodle.id}
+                        d={toPath(doodle.points)}
+                        fill="none"
+                        stroke={doodle.color ?? '#0f172a'}
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        onMouseEnter={() => setHovered(doodle.id)}
+                        onMouseLeave={() => setHovered(null)}
+                    />
+                ))}
+                {activeStroke?.points?.length > 1 && (
+                    <path d={toPath(activeStroke.points)} fill="none" stroke={activeStroke.color ?? '#0f172a'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                )}
+            </svg>
+            {hovered && (
+                <div className="absolute bottom-3 right-3 rounded-md bg-slate-900/90 px-2 py-1 text-xs text-white">
+                    {rendered.find((entry) => entry.id === hovered)?.userName ?? 'Unknown'}
+                </div>
+            )}
+        </div>
+    );
+}
