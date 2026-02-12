@@ -177,6 +177,14 @@ function DiagramEditorContent() {
     const canManageAccess = Boolean(permissions.canManageAccess);
     const showSignInCta = error.includes(SESSION_EXPIRED_MESSAGE);
 
+    const isCanvasMode = editorMode === 'flow' || editorMode === 'mind';
+    const isFlow = editorMode === 'flow';
+    const isDrawTool = isFlow && FLOW_DRAG_DRAW_TOOLS.includes(activeTool);
+    const isClickTool = isFlow && FLOW_CLICK_CREATE_TOOLS.includes(activeTool);
+    const isPanTool = isFlow && activeTool === FLOW_PAN_TOOL;
+    const isConnectorTool = isFlow && activeTool === FLOW_CONNECTOR_TOOL;
+    const isSelectTool = isFlow && activeTool === FLOW_SELECT_TOOL;
+    const isPenTool = isFlow && activeTool === FLOW_PEN_TOOL;
 
     const columnToTableMap = useMemo(() => {
         const map = {};
@@ -1335,15 +1343,6 @@ function DiagramEditorContent() {
         setActiveStroke(null);
         setIsDrawing(false);
     }, [activeTool]);
-
-    const isCanvasMode = editorMode === 'flow' || editorMode === 'mind';
-    const isFlow = editorMode === 'flow';
-    const isDrawTool = isFlow && FLOW_DRAG_DRAW_TOOLS.includes(activeTool);
-    const isClickTool = isFlow && FLOW_CLICK_CREATE_TOOLS.includes(activeTool);
-    const isPanTool = isFlow && activeTool === FLOW_PAN_TOOL;
-    const isConnectorTool = isFlow && activeTool === FLOW_CONNECTOR_TOOL;
-    const isSelectTool = isFlow && activeTool === FLOW_SELECT_TOOL;
-    const isPenTool = isFlow && activeTool === FLOW_PEN_TOOL;
 
     const getCursor = useCallback(() => {
         if (!isFlow) return 'default';
