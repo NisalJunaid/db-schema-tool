@@ -148,6 +148,7 @@ function DiagramEditorContent() {
     const [showShareModal, setShowShareModal] = useState(false);
 
     const activeHistory = editorMode === 'db' ? history : editorMode === 'flow' ? flowHistory : mindHistory;
+    const activeDoodles = editorMode === 'flow' ? flowDoodles : mindDoodles;
     const canUndo = activeHistory.past.length > 0;
     const canRedo = activeHistory.future.length > 0;
 
@@ -1263,21 +1264,19 @@ function DiagramEditorContent() {
         }
 
         const nextDoodle = { ...activeStroke, createdAt: new Date().toISOString(), mode: editorMode };
+        const nextDoodles = [...activeDoodles, nextDoodle];
 
         if (editorMode === 'flow') {
-            const next = [...flowDoodles, nextDoodle];
-            setFlowDoodles(next);
-            scheduleCanvasSave('flow', { nodes: flowNodes, edges: flowEdges, doodles: next });
-        }
-        if (editorMode === 'mind') {
-            const next = [...mindDoodles, nextDoodle];
-            setMindDoodles(next);
-            scheduleCanvasSave('mind', { nodes: mindNodes, edges: mindEdges, doodles: next });
+            setFlowDoodles(nextDoodles);
+            scheduleCanvasSave('flow', { nodes: flowNodes, edges: flowEdges, doodles: nextDoodles });
+        } else if (editorMode === 'mind') {
+            setMindDoodles(nextDoodles);
+            scheduleCanvasSave('mind', { nodes: mindNodes, edges: mindEdges, doodles: nextDoodles });
         }
 
         setSelectedDoodleId(nextDoodle.id);
         setActiveStroke(null);
-    }, [activeStroke, editorMode, flowDoodles, flowEdges, flowNodes, mindDoodles, mindEdges, mindNodes, scheduleCanvasSave]);
+    }, [activeDoodles, activeStroke, editorMode, flowEdges, flowNodes, mindEdges, mindNodes, scheduleCanvasSave]);
 
     const cursorClass = useMemo(() => {
         if (editorMode !== 'flow') return 'cursor-default';
@@ -1580,8 +1579,8 @@ function DiagramEditorContent() {
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            panOnDrag={editorMode === 'db' ? true : activeTool === 'pan'}
-                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : canEdit && editMode && activeTool === 'select'}
+                            panOnDrag={editorMode === 'db' ? true : activeTool !== 'pen' && activeTool === 'pan'}
+                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : canEdit && editMode && activeTool !== 'pen' && activeTool === 'select'}
                             elementsSelectable={editorMode === 'db' ? true : ['select', 'connector', 'child', 'topic'].includes(activeTool)}
                             selectionOnDrag={activeTool === 'select'}
                             snapToGrid={editorMode !== 'db'}
@@ -1637,11 +1636,11 @@ function DiagramEditorContent() {
                             </Controls>
                         </ReactFlow>
 
-                        {editorMode !== 'db' && (
+                        {(editorMode === 'flow' || editorMode === 'mind') && (
                             <DoodleLayer
                                 enabled={canEdit && editMode && activeTool === 'pen'}
                                 visible={showInk}
-                                doodles={editorMode === 'flow' ? flowDoodles : mindDoodles}
+                                doodles={activeDoodles}
                                 activeStroke={activeStroke}
                                 selectedId={selectedDoodleId}
                                 onSelect={setSelectedDoodleId}
