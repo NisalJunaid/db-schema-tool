@@ -47,8 +47,11 @@
 .flow-canvas.tool-rounded .react-flow__pane,
 .flow-canvas.tool-diamond .react-flow__pane,
 .flow-canvas.tool-circle .react-flow__pane,
-.flow-canvas.tool-text .react-flow__pane,
 .flow-canvas.tool-sticky .react-flow__pane,
 .flow-canvas.tool-pen .react-flow__pane {
     cursor: crosshair !important;
+}
+
+.flow-canvas.tool-text .react-flow__pane {
+    cursor: text !important;
 }

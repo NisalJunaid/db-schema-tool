@@ -137,6 +137,7 @@ function DiagramEditorContent() {
     const flowMutationCommitTimerRef = useRef(null);
     const flowMutationBaseRef = useRef({ nodes: null, edges: null });
     const latestFlowStateRef = useRef({ nodes: flowNodes, edges: flowEdges });
+    const doodlePointerCaptureRef = useRef({ element: null, pointerId: null });
 
     const [showAddTableModal, setShowAddTableModal] = useState(false);
     const [addTableForm, setAddTableForm] = useState({ name: '', schema: '' });
@@ -702,21 +703,6 @@ function DiagramEditorContent() {
         if (event.target?.closest?.('.react-flow__minimap')) return;
         if (!event.target?.closest?.('.react-flow__pane')) return;
 
-        if (FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) {
-            const position = toFlowPoint(event.clientX, event.clientY);
-            const size = activeTool === 'text' ? { width: 220, height: 90 } : { width: 240, height: 160 };
-            const newNode = createFlowNode(activeTool, position, size, toolStyle);
-            const nextNodes = [...flowNodes, newNode];
-            commitFlowState(nextNodes, flowEdges);
-            scheduleCanvasSave('flow', { nodes: nextNodes, edges: flowEdges, doodles: flowDoodles });
-            setSelectedEdgeId(null);
-            setSelectedDoodleId(null);
-            setSelectedNodeId(newNode.id);
-            setActiveTool('select');
-            event.preventDefault();
-            return;
-        }
-
         if (!FLOW_DRAG_DRAW_TOOLS.includes(activeTool)) return;
 
         const start = toFlowPoint(event.clientX, event.clientY);
@@ -727,7 +713,7 @@ function DiagramEditorContent() {
         setSelectedEdgeId(null);
         setSelectedDoodleId(null);
         event.preventDefault();
-    }, [activeTool, canEdit, commitFlowState, editMode, editorMode, flowDoodles, flowEdges, flowNodes, isPanTool, scheduleCanvasSave, toFlowPoint, toolStyle]);
+    }, [activeTool, canEdit, editMode, editorMode, flowNodes, isPanTool, toFlowPoint, toolStyle]);
 
     const handlePaneMouseMove = useCallback((event) => {
         if (!isDrawingShape || !drawingRef.current?.nodeId) return;
@@ -1294,10 +1280,12 @@ function DiagramEditorContent() {
 
     const handleDoodlePointerDown = useCallback((event) => {
         if (!(canEdit && editMode) || activeTool !== 'pen' || editorMode === 'db') return;
+        event.preventDefault();
         event.stopPropagation();
         const point = toFlowPoint(event.clientX, event.clientY);
         if (typeof event.currentTarget.setPointerCapture === 'function') {
             event.currentTarget.setPointerCapture(event.pointerId);
+            doodlePointerCaptureRef.current = { element: event.currentTarget, pointerId: event.pointerId };
         }
         setSelectedNodeId(null);
         setSelectedEdgeId(null);
@@ -1308,16 +1296,21 @@ function DiagramEditorContent() {
 
     const handleDoodlePointerMove = useCallback((event) => {
         if (!isDrawing || !activeStroke) return;
+        event.preventDefault();
+        event.stopPropagation();
         const point = toFlowPoint(event.clientX, event.clientY);
         setActiveStroke((current) => (current ? { ...current, points: [...current.points, point] } : current));
     }, [activeStroke, isDrawing, toFlowPoint]);
 
     const handleDoodlePointerUp = useCallback((event) => {
+        event.preventDefault();
+        event.stopPropagation();
         if (typeof event?.currentTarget?.releasePointerCapture === 'function' && typeof event?.pointerId === 'number') {
             if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
                 event.currentTarget.releasePointerCapture(event.pointerId);
             }
         }
+        doodlePointerCaptureRef.current = { element: null, pointerId: null };
 
         if (!isDrawing) {
             setActiveStroke(null);
@@ -1349,6 +1342,19 @@ function DiagramEditorContent() {
     }, [activeDoodles, activeStroke, editorMode, flowEdges, flowNodes, isDrawing, mindEdges, mindNodes, scheduleCanvasSave]);
 
     useEffect(() => {
+        if (activeTool === FLOW_PEN_TOOL) return;
+
+        const capture = doodlePointerCaptureRef.current;
+        if (
+            capture?.element
+            && typeof capture.pointerId === 'number'
+            && capture.element.hasPointerCapture?.(capture.pointerId)
+            && typeof capture.element.releasePointerCapture === 'function'
+        ) {
+            capture.element.releasePointerCapture(capture.pointerId);
+        }
+
+        doodlePointerCaptureRef.current = { element: null, pointerId: null };
         setActiveStroke(null);
         setIsDrawing(false);
     }, [activeTool]);
@@ -1359,7 +1365,7 @@ function DiagramEditorContent() {
         if (isPanTool) return isPanningCanvas ? 'grabbing' : 'grab';
         if (isPenTool || isDrawTool || isConnectorTool) return 'crosshair';
         if (activeTool === 'text') return 'text';
-        if (activeTool === 'sticky') return 'copy';
+        if (activeTool === 'sticky') return 'crosshair';
         return 'default';
     }, [activeTool, editMode, isCanvasMode, isConnectorTool, isDrawTool, isPanTool, isPenTool, isPanningCanvas]);
 
@@ -1368,12 +1374,12 @@ function DiagramEditorContent() {
         return isPanningCanvas ? `tool-${activeTool} is-panning` : `tool-${activeTool}`;
     }, [activeTool, isFlow, isPanningCanvas]);
 
-    const doodleCaptureEnabled = Boolean(
-        (isFlow || editorMode === 'mind')
+    const doodleEnabled = Boolean(
+        isCanvasMode
         && canEdit
         && editMode
         && showInk
-        && isPenTool,
+        && activeTool === FLOW_PEN_TOOL,
     );
 
     const renderedNodes = useMemo(() => {
@@ -1710,6 +1716,20 @@ function DiagramEditorContent() {
                                 setSelectedEdgeId(null);
                                 setSelectedNodeId(null);
                                 if (!(canEdit && editMode) || editorMode === 'db') return;
+
+                                if (editorMode === 'flow' && FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) {
+                                    const position = toFlowPoint(event.clientX, event.clientY);
+                                    const size = activeTool === 'text' ? { width: 220, height: 90 } : { width: 240, height: 160 };
+                                    const newNode = createFlowNode(activeTool, position, size, toolStyle);
+                                    const nextNodes = [...flowNodes, newNode];
+                                    commitFlowState(nextNodes, flowEdges);
+                                    scheduleCanvasSave('flow', { nodes: nextNodes, edges: flowEdges, doodles: flowDoodles });
+                                    setSelectedDoodleId(null);
+                                    setSelectedNodeId(newNode.id);
+                                    setActiveTool('select');
+                                    return;
+                                }
+
                                 const position = toFlowPoint(event.clientX, event.clientY);
                                 if (editorMode === 'mind' && activeTool === 'topic') {
                                     const topic = createMindRootNode(position, 'Topic');
@@ -1749,7 +1769,7 @@ function DiagramEditorContent() {
 
                         {(editorMode === 'flow' || editorMode === 'mind') && (
                             <DoodleLayer
-                                enabled={doodleCaptureEnabled}
+                                enabled={doodleEnabled}
                                 visible={isCanvasMode && showInk}
                                 doodles={activeDoodles}
                                 activeStroke={activeStroke}
