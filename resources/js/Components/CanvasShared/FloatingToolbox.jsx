@@ -1,4 +1,4 @@
-const tools = [
+const flowTools = [
     { key: 'select', icon: 'fa-solid fa-arrow-pointer', title: 'Select' },
     { key: 'hand', icon: 'fa-regular fa-hand', title: 'Pan / Hand' },
     { key: 'rect', icon: 'fa-regular fa-square', title: 'Rectangle' },
@@ -8,6 +8,15 @@ const tools = [
     { key: 'sticky', icon: 'fa-solid fa-note-sticky', title: 'Sticky Note' },
     { key: 'text', icon: 'fa-solid fa-font', title: 'Text' },
     { key: 'connector', icon: 'fa-solid fa-arrow-right-long', title: 'Connector' },
+    { key: 'pen', icon: 'fa-solid fa-pen', title: 'Pen' },
+];
+
+const mindTools = [
+    { key: 'select', icon: 'fa-solid fa-arrow-pointer', title: 'Select' },
+    { key: 'hand', icon: 'fa-regular fa-hand', title: 'Pan / Hand' },
+    { key: 'topic', icon: 'fa-solid fa-circle-plus', title: 'Topic' },
+    { key: 'child', icon: 'fa-solid fa-diagram-next', title: 'Add Child' },
+    { key: 'sibling', icon: 'fa-solid fa-code-branch', title: 'Add Sibling' },
     { key: 'pen', icon: 'fa-solid fa-pen', title: 'Pen' },
 ];
 
@@ -27,11 +36,15 @@ function ToolButton({ active, icon, title, onClick }) {
 
 export default function FloatingToolbox({ mode, tool, setTool }) {
     if (!['flow', 'mind'].includes(mode)) return null;
+    const tools = mode === 'flow' ? flowTools : mindTools;
 
     return (
         <div className="absolute left-3 top-[90px] z-40 flex w-14 flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-xl backdrop-blur">
-            {tools.map((item) => (
-                <ToolButton key={item.key} active={tool === item.key} icon={item.icon} title={item.title} onClick={() => setTool(item.key)} />
+            {tools.map((item, index) => (
+                <div key={item.key} className="w-full">
+                    {index === 2 && <div className="mx-1 mb-2 border-t border-slate-200" />}
+                    <ToolButton active={tool === item.key} icon={item.icon} title={item.title} onClick={() => setTool(item.key)} />
+                </div>
             ))}
         </div>
     );
