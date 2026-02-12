@@ -14,6 +14,7 @@ import NewDiagramModal from '@/Components/Diagram/modals/NewDiagramModal';
 import OpenDiagramModal from '@/Components/Diagram/modals/OpenDiagramModal';
 import RelationshipModal from '@/Components/Diagram/modals/RelationshipModal';
 import ShareAccessModal from '@/Components/Diagrams/ShareAccessModal';
+import EditorErrorBoundary from '@/Components/EditorErrorBoundary';
 import FlowSidebar from '@/Components/CanvasFlow/FlowSidebar';
 import { flowNodeTypes } from '@/Components/CanvasFlow/flowTypes';
 import { createFlowNode } from '@/Components/CanvasFlow/flowDefaults';
@@ -55,7 +56,7 @@ const withAssignedRelationshipColors = (sourceRelationships) => {
 };
 
 function DiagramEditorContent() {
-    const { diagramId, permissions: pagePermissions = {} } = usePage().props;
+    const { diagramId, permissions: pagePermissions = {}, diagram: initialDiagramPayload = null } = usePage().props;
     const reactFlowRef = useRef(null);
     const viewportSaveTimerRef = useRef(null);
     const editModeNoticeTimerRef = useRef(null);
@@ -65,11 +66,31 @@ function DiagramEditorContent() {
     const [tables, setTables] = useState([]);
     const [relationships, setRelationships] = useState([]);
     const [nodes, setNodes] = useState([]);
-    const [editorMode, setEditorMode] = useState('db');
-    const [flowNodes, setFlowNodes] = useState([]);
-    const [flowEdges, setFlowEdges] = useState([]);
-    const [mindNodes, setMindNodes] = useState([]);
-    const [mindEdges, setMindEdges] = useState([]);
+    const [editorMode, setEditorMode] = useState(
+        initialDiagramPayload?.editor_mode && ['db', 'flow', 'mind'].includes(initialDiagramPayload.editor_mode)
+            ? initialDiagramPayload.editor_mode
+            : 'db',
+    );
+    const [flowNodes, setFlowNodes] = useState(
+        Array.isArray(initialDiagramPayload?.flow_state?.nodes)
+            ? initialDiagramPayload.flow_state.nodes
+            : [],
+    );
+    const [flowEdges, setFlowEdges] = useState(
+        Array.isArray(initialDiagramPayload?.flow_state?.edges)
+            ? initialDiagramPayload.flow_state.edges
+            : [],
+    );
+    const [mindNodes, setMindNodes] = useState(
+        Array.isArray(initialDiagramPayload?.mind_state?.nodes)
+            ? initialDiagramPayload.mind_state.nodes
+            : [],
+    );
+    const [mindEdges, setMindEdges] = useState(
+        Array.isArray(initialDiagramPayload?.mind_state?.edges)
+            ? initialDiagramPayload.mind_state.edges
+            : [],
+    );
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [savingState, setSavingState] = useState('Autosaved');
@@ -258,7 +279,9 @@ function DiagramEditorContent() {
                 sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'),
                 targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'),
             })));
-            const mode = diagramPayload.editor_mode ?? 'db';
+            const mode = diagramPayload?.editor_mode && ['db', 'flow', 'mind'].includes(diagramPayload.editor_mode)
+                ? diagramPayload.editor_mode
+                : 'db';
             const loadedFlowNodes = asCollection(diagramPayload?.flow_state?.nodes ?? [], 'nodes');
             const loadedFlowEdges = asCollection(diagramPayload?.flow_state?.edges ?? [], 'edges');
             const loadedMindNodes = asCollection(diagramPayload?.mind_state?.nodes ?? [], 'nodes');
@@ -268,10 +291,22 @@ function DiagramEditorContent() {
             setEditorMode(mode);
             setTables(normalizedTables);
             setRelationships(relationshipRows);
-            setFlowNodes(loadedFlowNodes);
-            setFlowEdges(loadedFlowEdges);
-            setMindNodes(loadedMindNodes);
-            setMindEdges(loadedMindEdges);
+
+            if (diagramPayload?.editor_mode === 'flow') {
+                setFlowNodes(Array.isArray(diagramPayload.flow_state?.nodes) ? diagramPayload.flow_state.nodes : []);
+                setFlowEdges(Array.isArray(diagramPayload.flow_state?.edges) ? diagramPayload.flow_state.edges : []);
+            } else {
+                setFlowNodes(loadedFlowNodes);
+                setFlowEdges(loadedFlowEdges);
+            }
+
+            if (diagramPayload?.editor_mode === 'mind') {
+                setMindNodes(Array.isArray(diagramPayload.mind_state?.nodes) ? diagramPayload.mind_state.nodes : []);
+                setMindEdges(Array.isArray(diagramPayload.mind_state?.edges) ? diagramPayload.mind_state.edges : []);
+            } else {
+                setMindNodes(loadedMindNodes);
+                setMindEdges(loadedMindEdges);
+            }
             setHistory({ past: [], present: buildSnapshot(normalizedTables, relationshipRows), future: [] });
             setFlowHistory({ past: [], present: { nodes: cloneState(loadedFlowNodes), edges: cloneState(loadedFlowEdges) }, future: [] });
             setMindHistory({ past: [], present: { nodes: cloneState(loadedMindNodes), edges: cloneState(loadedMindEdges) }, future: [] });
@@ -820,7 +855,16 @@ function DiagramEditorContent() {
 
 
     const handleEditorModeChange = useCallback(async (nextMode) => {
-        setEditorMode(nextMode);
+        if (!['db', 'flow', 'mind'].includes(nextMode)) return;
+
+        if (nextMode === 'db') {
+            setEditorMode('db');
+        } else if (nextMode === 'flow') {
+            setEditorMode('flow');
+        } else if (nextMode === 'mind') {
+            setEditorMode('mind');
+        }
+
         if (!canEdit) {
             setError('No edit permission.');
             return;
@@ -1035,9 +1079,24 @@ function DiagramEditorContent() {
     }
 
     const nodeTypes = useMemo(() => {
-        if (editorMode === 'flow') return flowNodeTypes;
-        if (editorMode === 'mind') return mindNodeTypes;
-        return { tableNode: TableNode };
+        try {
+            if (editorMode === 'flow') {
+                return flowNodeTypes && typeof flowNodeTypes === 'object'
+                    ? flowNodeTypes
+                    : { fallbackFlowNode: (() => null) };
+            }
+
+            if (editorMode === 'mind') {
+                return mindNodeTypes && typeof mindNodeTypes === 'object'
+                    ? mindNodeTypes
+                    : { fallbackMindNode: (() => null) };
+            }
+
+            return { tableNode: TableNode ?? (() => null) };
+        } catch (nodeTypeError) {
+            console.error('nodeTypes error', nodeTypeError);
+            return { tableNode: TableNode ?? (() => null) };
+        }
     }, [editorMode]);
 
     if (loading) return <section className="flex h-screen items-center justify-center"><p className="text-sm text-slate-600">Loading diagram…</p></section>;
@@ -1143,8 +1202,8 @@ function DiagramEditorContent() {
 
                     <div className="m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                         <ReactFlow
-                            nodes={activeNodes}
-                            edges={activeEdges}
+                            nodes={Array.isArray(activeNodes) ? activeNodes : []}
+                            edges={Array.isArray(activeEdges) ? activeEdges : []}
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
@@ -1225,7 +1284,9 @@ function DiagramEditorContent() {
 export default function DiagramEditor() {
     return (
         <ReactFlowProvider>
-            <DiagramEditorContent />
+            <EditorErrorBoundary>
+                <DiagramEditorContent />
+            </EditorErrorBoundary>
         </ReactFlowProvider>
     );
 }
