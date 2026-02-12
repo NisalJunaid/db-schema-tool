@@ -121,6 +121,7 @@ function DiagramEditorContent() {
     const [flowDoodles, setFlowDoodles] = useState(Array.isArray(initialDiagramPayload?.flow_state?.doodles) ? initialDiagramPayload.flow_state.doodles : []);
     const [mindDoodles, setMindDoodles] = useState(Array.isArray(initialDiagramPayload?.mind_state?.doodles) ? initialDiagramPayload.mind_state.doodles : []);
     const [activeStroke, setActiveStroke] = useState(null);
+    const [isDrawing, setIsDrawing] = useState(false);
     const [editModeNotice, setEditModeNotice] = useState('');
     const [history, setHistory] = useState({ past: [], present: null, future: [] });
     const [flowHistory, setFlowHistory] = useState({ past: [], present: null, future: [] });
@@ -1244,22 +1245,39 @@ function DiagramEditorContent() {
         if (!(canEdit && editMode) || activeTool !== 'pen' || editorMode === 'db') return;
         const rect = event.currentTarget.getBoundingClientRect();
         const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+        if (typeof event.currentTarget.setPointerCapture === 'function') {
+            event.currentTarget.setPointerCapture(event.pointerId);
+        }
         setSelectedNodeId(null);
         setSelectedEdgeId(null);
         setSelectedDoodleId(null);
         setActiveStroke({ id: `stroke-${Date.now()}`, points: [point], color: toolStyle.stroke, strokeWidth: 2.5, userId: authUser?.id ?? null, userName: authUser?.name ?? 'User' });
+        setIsDrawing(true);
     }, [authUser?.id, authUser?.name, canEdit, activeTool, editMode, editorMode, toolStyle.stroke]);
 
     const handleDoodlePointerMove = useCallback((event) => {
-        if (!activeStroke) return;
+        if (!isDrawing || !activeStroke) return;
         const rect = event.currentTarget.getBoundingClientRect();
         const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
         setActiveStroke((current) => (current ? { ...current, points: [...current.points, point] } : current));
-    }, [activeStroke]);
+    }, [activeStroke, isDrawing]);
 
-    const handleDoodlePointerUp = useCallback(() => {
+    const handleDoodlePointerUp = useCallback((event) => {
+        if (typeof event?.currentTarget?.releasePointerCapture === 'function' && typeof event?.pointerId === 'number') {
+            if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+        }
+
+        if (!isDrawing) {
+            setActiveStroke(null);
+            setIsDrawing(false);
+            return;
+        }
+
         if (!activeStroke || activeStroke.points.length < 2) {
             setActiveStroke(null);
+            setIsDrawing(false);
             return;
         }
 
@@ -1276,7 +1294,13 @@ function DiagramEditorContent() {
 
         setSelectedDoodleId(nextDoodle.id);
         setActiveStroke(null);
-    }, [activeDoodles, activeStroke, editorMode, flowEdges, flowNodes, mindEdges, mindNodes, scheduleCanvasSave]);
+        setIsDrawing(false);
+    }, [activeDoodles, activeStroke, editorMode, flowEdges, flowNodes, isDrawing, mindEdges, mindNodes, scheduleCanvasSave]);
+
+    useEffect(() => {
+        setActiveStroke(null);
+        setIsDrawing(false);
+    }, [activeTool]);
 
     const cursorClass = useMemo(() => {
         if (editorMode !== 'flow') return 'cursor-default';
@@ -1638,15 +1662,20 @@ function DiagramEditorContent() {
 
                         {(editorMode === 'flow' || editorMode === 'mind') && (
                             <DoodleLayer
-                                enabled={canEdit && editMode && activeTool === 'pen'}
+                                enabled={canEdit && editMode && (activeTool === 'pen' || activeTool === 'select')}
                                 visible={showInk}
                                 doodles={activeDoodles}
                                 activeStroke={activeStroke}
                                 selectedId={selectedDoodleId}
-                                onSelect={setSelectedDoodleId}
+                                onSelect={(doodleId) => {
+                                    setSelectedNodeId(null);
+                                    setSelectedEdgeId(null);
+                                    setSelectedDoodleId(doodleId);
+                                }}
                                 onPointerDown={handleDoodlePointerDown}
                                 onPointerMove={handleDoodlePointerMove}
                                 onPointerUp={handleDoodlePointerUp}
+                                onPointerLeave={handleDoodlePointerUp}
                             />
                         )}
                         {editorMode !== 'db' && editMode && (selectedNodeId || selectedEdgeId) && (

@@ -12,6 +12,7 @@ export default function DoodleLayer({
     onPointerDown,
     onPointerMove,
     onPointerUp,
+    onPointerLeave,
 }) {
     const [hovered, setHovered] = useState(null);
     const rendered = useMemo(() => (Array.isArray(doodles) ? doodles : []), [doodles]);
@@ -24,7 +25,7 @@ export default function DoodleLayer({
             onPointerDown={enabled ? onPointerDown : undefined}
             onPointerMove={enabled ? onPointerMove : undefined}
             onPointerUp={enabled ? onPointerUp : undefined}
-            onPointerLeave={enabled ? onPointerUp : undefined}
+            onPointerLeave={enabled ? (onPointerLeave ?? onPointerUp) : undefined}
         >
             <svg className="absolute inset-0 h-full w-full">
                 {rendered.map((doodle) => {
@@ -53,6 +54,7 @@ export default function DoodleLayer({
                                 pointerEvents="stroke"
                                 onMouseEnter={() => setHovered(doodle.id)}
                                 onMouseLeave={() => setHovered(null)}
+                                onClick={() => onSelect?.(doodle.id)}
                             />
                         </g>
                     );
