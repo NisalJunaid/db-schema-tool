@@ -45,6 +45,7 @@ const DEFAULT_SHAPE_SIZES = {
     cylinder: { width: 220, height: 140 },
 };
 const FLOW_CLICK_CREATE_TOOLS = ['text', 'sticky'];
+const FLOW_DRAG_DRAW_TOOLS = ['rect', 'rounded', 'diamond', 'circle', 'parallelogram', 'cylinder'];
 const FLOW_CONNECTOR_TOOL = 'connector';
 const FLOW_PAN_TOOL = 'pan';
 const FLOW_SELECT_TOOL = 'select';
@@ -205,6 +206,7 @@ function DiagramEditorContent() {
     const isFlow = editorMode === 'flow';
     const isShapePlacementMode = isFlow && toolbarMode === 'shapes' && activeShape !== null;
     const isClickTool = isFlow && FLOW_CLICK_CREATE_TOOLS.includes(activeTool);
+    const isDrawTool = isFlow && FLOW_DRAG_DRAW_TOOLS.includes(activeTool);
     const isPanTool = isFlow && activeTool === FLOW_PAN_TOOL;
     const isConnectorTool = isFlow && activeTool === FLOW_CONNECTOR_TOOL;
     const isSelectTool = isFlow && activeTool === FLOW_SELECT_TOOL;
@@ -713,15 +715,14 @@ function DiagramEditorContent() {
     const handlePaneMouseDown = useCallback((event) => {
         if (editorMode !== 'flow') return;
 
+        console.log('pane down', activeTool);
+
         if (isPanTool) {
             setIsPanningCanvas(true);
         }
 
         if (!canEdit) return;
-
-        if (!editMode) {
-            setEditMode(true);
-        }
+        if (!editMode) return;
 
         if (!reactFlowRef.current) return;
 
@@ -746,7 +747,7 @@ function DiagramEditorContent() {
         setSelectedEdgeId(null);
         setSelectedDoodleId(null);
         event.preventDefault();
-    }, [activeShape, canEdit, editMode, editorMode, flowNodes, isPanTool, isShapePlacementMode, toFlowPoint]);
+    }, [activeShape, activeTool, canEdit, editMode, editorMode, flowNodes, isPanTool, isShapePlacementMode, toFlowPoint]);
 
     const handlePaneMouseMove = useCallback((event) => {
         if (!isDrawingShape || !drawingRef.current?.start || !drawingRef.current?.tool) return;
@@ -1753,10 +1754,10 @@ function DiagramEditorContent() {
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            panOnDrag={isFlow ? (isShapePlacementMode ? false : (isPanTool ? [0] : false)) : (editorMode === 'mind' ? canEdit && editMode && activeTool === 'pan' : undefined)}
-                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode && isSelectTool && !isShapePlacementMode : canEdit && editMode}
-                            elementsSelectable={editorMode === 'db' ? true : isFlow ? ((isSelectTool || isConnectorTool) && !isShapePlacementMode) : canEdit && editMode}
-                            selectionOnDrag={editorMode === 'db' ? true : isFlow ? (!isPanTool && isSelectTool && !isShapePlacementMode) : canEdit && editMode}
+                            panOnDrag={isFlow ? (isDrawTool ? false : isPanTool) : (editorMode === 'mind' ? canEdit && editMode && activeTool === 'pan' : undefined)}
+                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? (isDrawTool ? false : (isSelectTool && editMode)) : canEdit && editMode}
+                            elementsSelectable={editorMode === 'db' ? true : isFlow ? isSelectTool : canEdit && editMode}
+                            selectionOnDrag={editorMode === 'db' ? true : isFlow ? (isDrawTool ? false : isSelectTool) : canEdit && editMode}
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
                             zoomOnScroll
@@ -1818,7 +1819,7 @@ function DiagramEditorContent() {
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={{ type: 'bezier' }}
                             connectionMode={editorMode === 'db' ? 'strict' : (activeTool === 'connector' ? 'loose' : 'strict')}
-                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode && isConnectorTool : canEdit && editMode && activeTool === 'connector'}
+                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : isFlow ? isConnectorTool : canEdit && editMode && activeTool === 'connector'}
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
                             {showMiniMap && <MiniMap position="bottom-right" pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
