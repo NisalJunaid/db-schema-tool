@@ -30,6 +30,10 @@ export default function Toolbar({
     canChangeMode,
     editMode,
     onToggleEditMode,
+    showMiniMap,
+    onToggleMiniMap,
+    showGrid,
+    onToggleGrid,
 }) {
     return (
         <div className="sticky top-0 z-30 flex items-center border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
@@ -57,6 +61,8 @@ export default function Toolbar({
                     <IconButton title="Delete selection" onClick={onDeleteSelection} icon="fa-solid fa-trash" className="text-rose-600 hover:text-rose-700" disabled={!canDeleteSelection} />
                     <IconButton title="Export" onClick={onExport} icon="fa-solid fa-file-arrow-down" />
                     <IconButton title="Export image" onClick={onExportImage} icon="fa-solid fa-image" />
+                    <IconButton title={showMiniMap ? 'Hide minimap' : 'Show minimap'} onClick={onToggleMiniMap} icon="fa-regular fa-map" className={showMiniMap ? 'border-indigo-300 text-indigo-700' : ''} />
+                    <IconButton title={showGrid ? 'Hide grid' : 'Show grid'} onClick={onToggleGrid} icon="fa-solid fa-border-all" className={showGrid ? 'border-indigo-300 text-indigo-700' : ''} />
                     {(editorMode === 'flow' || editorMode === 'mind' || editorMode === 'db') && (
                         <button
                             type="button"

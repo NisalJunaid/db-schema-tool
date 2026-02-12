@@ -7,6 +7,8 @@ export default function DoodleLayer({
     visible,
     doodles,
     activeStroke,
+    selectedId,
+    onSelect,
     onPointerDown,
     onPointerMove,
     onPointerUp,
@@ -18,28 +20,49 @@ export default function DoodleLayer({
 
     return (
         <div
-            className={`absolute inset-0 z-30 ${enabled ? 'pointer-events-auto' : 'pointer-events-none'}`}
+            className="absolute inset-0 z-30 pointer-events-auto"
             onMouseDown={enabled ? onPointerDown : undefined}
             onMouseMove={enabled ? onPointerMove : undefined}
             onMouseUp={enabled ? onPointerUp : undefined}
             onMouseLeave={enabled ? onPointerUp : undefined}
         >
-            <svg className="absolute inset-0 h-full w-full">
-                {rendered.map((doodle) => (
-                    <path
-                        key={doodle.id}
-                        d={toPath(doodle.points)}
-                        fill="none"
-                        stroke={doodle.color ?? '#0f172a'}
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        onMouseEnter={() => setHovered(doodle.id)}
-                        onMouseLeave={() => setHovered(null)}
-                    />
-                ))}
+            <svg className="absolute inset-0 h-full w-full" onMouseDown={() => !enabled && onSelect?.(null)}>
+                {rendered.map((doodle) => {
+                    const width = Number(doodle.strokeWidth ?? 2.5);
+                    const selected = doodle.id === selectedId;
+                    return (
+                        <g key={doodle.id}>
+                            {selected && (
+                                <path
+                                    d={toPath(doodle.points)}
+                                    fill="none"
+                                    stroke="#0f172a"
+                                    strokeOpacity="0.2"
+                                    strokeWidth={width + 6}
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                            )}
+                            <path
+                                d={toPath(doodle.points)}
+                                fill="none"
+                                stroke={doodle.color ?? '#0f172a'}
+                                strokeWidth={selected ? width + 1 : width}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                pointerEvents="stroke"
+                                onMouseDown={(event) => {
+                                    event.stopPropagation();
+                                    if (!enabled) onSelect?.(doodle.id);
+                                }}
+                                onMouseEnter={() => setHovered(doodle.id)}
+                                onMouseLeave={() => setHovered(null)}
+                            />
+                        </g>
+                    );
+                })}
                 {activeStroke?.points?.length > 1 && (
-                    <path d={toPath(activeStroke.points)} fill="none" stroke={activeStroke.color ?? '#0f172a'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d={toPath(activeStroke.points)} fill="none" stroke={activeStroke.color ?? '#0f172a'} strokeWidth={activeStroke.strokeWidth ?? 2.5} strokeLinecap="round" strokeLinejoin="round" />
                 )}
             </svg>
             {hovered && (
