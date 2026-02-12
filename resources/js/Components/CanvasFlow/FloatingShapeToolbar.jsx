@@ -1,39 +1,13 @@
-import { useMemo } from 'react';
-
 const STROKE_WIDTH_OPTIONS = [1, 2, 3, 4, 6, 8];
-const TOOLBAR_OFFSET = 10;
-const TOP_MARGIN = 8;
 
 export default function FloatingShapeToolbar({
     selectedNode,
-    reactFlowInstance,
     onUpdateNode,
     onDuplicate,
     onDelete,
     onClose,
 }) {
-    const position = useMemo(() => {
-        if (!selectedNode || !reactFlowInstance?.flowToScreenPosition || !reactFlowInstance?.getNode) return null;
-
-        const latestNode = reactFlowInstance.getNode(selectedNode.id) ?? selectedNode;
-        const nodeWidth = Number(latestNode?.measured?.width ?? latestNode?.width ?? latestNode?.style?.width ?? 0);
-        const anchorPosition = latestNode?.positionAbsolute ?? latestNode?.position ?? selectedNode.position;
-
-        if (!anchorPosition) return null;
-
-        const topCenter = {
-            x: anchorPosition.x + (nodeWidth / 2),
-            y: anchorPosition.y,
-        };
-        const screenPos = reactFlowInstance.flowToScreenPosition(topCenter);
-
-        return {
-            left: screenPos.x,
-            top: Math.max(screenPos.y - TOOLBAR_OFFSET, TOP_MARGIN),
-        };
-    }, [reactFlowInstance, selectedNode]);
-
-    if (!selectedNode || !position) return null;
+    if (!selectedNode) return null;
 
     const fill = selectedNode.data?.fill ?? '#ffffff';
     const stroke = selectedNode.data?.stroke ?? '#475569';
@@ -45,8 +19,7 @@ export default function FloatingShapeToolbar({
 
     return (
         <div
-            className="pointer-events-auto absolute z-[60] flex -translate-x-1/2 -translate-y-full items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-lg"
-            style={position}
+            className="pointer-events-auto absolute left-4 top-4 z-[60] flex items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-lg"
         >
             <input type="color" title="Fill" value={fill} onChange={(event) => onUpdateNode?.({ fill: event.target.value })} className="h-8 w-8" />
             <input type="color" title="Stroke" value={stroke} onChange={(event) => onUpdateNode?.({ stroke: event.target.value })} className="h-8 w-8" />
