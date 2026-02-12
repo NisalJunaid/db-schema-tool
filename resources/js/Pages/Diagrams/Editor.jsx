@@ -1368,7 +1368,13 @@ function DiagramEditorContent() {
         return isPanningCanvas ? `tool-${activeTool} is-panning` : `tool-${activeTool}`;
     }, [activeTool, isFlow, isPanningCanvas]);
 
-    const doodleEnabled = isCanvasMode && showInk && isPenTool && canEdit && editMode;
+    const doodleCaptureEnabled = Boolean(
+        (isFlow || editorMode === 'mind')
+        && canEdit
+        && editMode
+        && showInk
+        && isPenTool,
+    );
 
     const renderedNodes = useMemo(() => {
         if (editorMode === 'db') return Array.isArray(activeNodes) ? activeNodes : [];
@@ -1743,13 +1749,15 @@ function DiagramEditorContent() {
 
                         {(editorMode === 'flow' || editorMode === 'mind') && (
                             <DoodleLayer
-                                enabled={doodleEnabled}
+                                enabled={doodleCaptureEnabled}
                                 visible={isCanvasMode && showInk}
                                 doodles={activeDoodles}
                                 activeStroke={activeStroke}
                                 selectedId={selectedDoodleId}
                                 onSelect={(doodleId) => {
                                     if (!editMode) return;
+                                    if (isPenTool) return;
+                                    if (isFlow && !isSelectTool) return;
                                     setSelectedNodeId(null);
                                     setSelectedEdgeId(null);
                                     setSelectedDoodleId(doodleId);
