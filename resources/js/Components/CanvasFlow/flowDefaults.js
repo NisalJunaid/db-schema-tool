@@ -1,16 +1,7 @@
-import { SHAPE_REGISTRY } from '@/Components/CanvasFlow/shapeRegistry';
+import { SHAPE_KEYS, SHAPE_REGISTRY } from '@/Components/CanvasFlow/shapeRegistry';
 
 const byType = {
-    rect: 'flowShape',
-    rounded: 'flowShape',
-    diamond: 'flowShape',
-    circle: 'flowShape',
-    parallelogram: 'flowShape',
-    cylinder: 'flowShape',
-    document: 'flowShape',
-    cloud: 'flowShape',
-    star: 'flowShape',
-    hexagon: 'flowShape',
+    ...Object.fromEntries(SHAPE_KEYS.map((shapeKey) => [shapeKey, 'flowShape'])),
     text: 'flowText',
     sticky: 'flowSticky',
     group: 'flowGroup',
@@ -47,6 +38,7 @@ export function createFlowNode(nodeType, position = { x: 120, y: 120 }, size = n
             opacity: style.opacity ?? 1,
             shadow: style.shadow ?? false,
             textSize: style.textSize ?? 'md',
+            textVAlign: style.textVAlign ?? 'middle',
             ...style,
         },
     };

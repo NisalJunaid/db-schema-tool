@@ -49,6 +49,26 @@ export const SHAPE_REGISTRY = {
         defaultSize: { width: 220, height: 160 },
         icon: 'fa-regular fa-hexagon',
     },
+    trapezoid: {
+        label: 'Trapezoid',
+        defaultSize: { width: 230, height: 150 },
+        icon: 'fa-solid fa-draw-polygon',
+    },
+    triangle: {
+        label: 'Triangle',
+        defaultSize: { width: 210, height: 170 },
+        icon: 'fa-solid fa-play',
+    },
+    pentagon: {
+        label: 'Pentagon',
+        defaultSize: { width: 220, height: 180 },
+        icon: 'fa-solid fa-draw-polygon',
+    },
+    octagon: {
+        label: 'Octagon',
+        defaultSize: { width: 230, height: 170 },
+        icon: 'fa-solid fa-draw-polygon',
+    },
 };
 
 export const SHAPE_KEYS = Object.keys(SHAPE_REGISTRY);
