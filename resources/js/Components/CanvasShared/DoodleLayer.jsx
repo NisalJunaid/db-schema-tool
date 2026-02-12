@@ -17,6 +17,55 @@ export default function DoodleLayer({
     const [hovered, setHovered] = useState(null);
     const rendered = useMemo(() => (Array.isArray(doodles) ? doodles : []), [doodles]);
 
+    const handlePointerDown = (event) => {
+        if (!enabled) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.currentTarget.setPointerCapture === 'function') {
+            event.currentTarget.setPointerCapture(event.pointerId);
+        }
+        onPointerDown?.(event);
+    };
+
+    const handlePointerMove = (event) => {
+        if (!enabled) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onPointerMove?.(event);
+    };
+
+    const handlePointerUp = (event) => {
+        if (!enabled) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (
+            typeof event.currentTarget.releasePointerCapture === 'function'
+            && typeof event.pointerId === 'number'
+            && event.currentTarget.hasPointerCapture?.(event.pointerId)
+        ) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        onPointerUp?.(event);
+    };
+
+    const handlePointerLeave = (event) => {
+        if (!enabled) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (
+            typeof event.currentTarget.releasePointerCapture === 'function'
+            && typeof event.pointerId === 'number'
+            && event.currentTarget.hasPointerCapture?.(event.pointerId)
+        ) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        if (onPointerLeave) {
+            onPointerLeave(event);
+            return;
+        }
+        onPointerUp?.(event);
+    };
+
     if (!visible) return null;
 
     return (
@@ -30,10 +79,10 @@ export default function DoodleLayer({
                         height="100%"
                         fill="transparent"
                         pointerEvents="all"
-                        onPointerDown={onPointerDown}
-                        onPointerMove={onPointerMove}
-                        onPointerUp={onPointerUp}
-                        onPointerLeave={onPointerLeave ?? onPointerUp}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerLeave={handlePointerLeave}
                     />
                 )}
                 {rendered.map((doodle) => {
