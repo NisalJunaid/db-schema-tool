@@ -22,6 +22,9 @@ class Diagram extends Model
         'name',
         'description',
         'viewport',
+        'editor_mode',
+        'flow_state',
+        'mind_state',
         'is_public',
         'preview_image',
         'preview_path',
@@ -34,6 +37,9 @@ class Diagram extends Model
      */
     protected $casts = [
         'viewport' => 'array',
+        'editor_mode' => 'string',
+        'flow_state' => 'array',
+        'mind_state' => 'array',
         'is_public' => 'boolean',
     ];
 

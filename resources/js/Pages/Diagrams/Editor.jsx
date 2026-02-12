@@ -1,7 +1,7 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toBlob, toPng } from 'html-to-image';
-import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, applyNodeChanges, getRectOfNodes, getViewportForBounds } from 'reactflow';
+import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, getRectOfNodes, getViewportForBounds, MarkerType } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
 import Sidebar from '@/Components/Diagram/Sidebar';
@@ -14,6 +14,13 @@ import NewDiagramModal from '@/Components/Diagram/modals/NewDiagramModal';
 import OpenDiagramModal from '@/Components/Diagram/modals/OpenDiagramModal';
 import RelationshipModal from '@/Components/Diagram/modals/RelationshipModal';
 import ShareAccessModal from '@/Components/Diagrams/ShareAccessModal';
+import FlowSidebar from '@/Components/CanvasFlow/FlowSidebar';
+import { flowNodeTypes } from '@/Components/CanvasFlow/flowTypes';
+import { createFlowNode } from '@/Components/CanvasFlow/flowDefaults';
+import MindSidebar from '@/Components/CanvasMind/MindSidebar';
+import { mindNodeTypes } from '@/Components/CanvasMind/mindTypes';
+import { collectDescendantIds } from '@/Components/CanvasMind/mindLayout';
+import { createMindChildNode, createMindRootNode } from '@/Components/CanvasMind/mindDefaults';
 import { asCollection, computeTableDimensions, getTableColorMeta, parseColumnIdFromHandle, relationshipLabel, toColumnHandleId } from '@/Components/Diagram/utils';
 import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
@@ -58,6 +65,11 @@ function DiagramEditorContent() {
     const [tables, setTables] = useState([]);
     const [relationships, setRelationships] = useState([]);
     const [nodes, setNodes] = useState([]);
+    const [editorMode, setEditorMode] = useState('db');
+    const [flowNodes, setFlowNodes] = useState([]);
+    const [flowEdges, setFlowEdges] = useState([]);
+    const [mindNodes, setMindNodes] = useState([]);
+    const [mindEdges, setMindEdges] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [savingState, setSavingState] = useState('Autosaved');
@@ -71,6 +83,8 @@ function DiagramEditorContent() {
     const [showGrid, setShowGrid] = useState(true);
     const [editModeNotice, setEditModeNotice] = useState('');
     const [history, setHistory] = useState({ past: [], present: null, future: [] });
+    const [flowHistory, setFlowHistory] = useState({ past: [], present: null, future: [] });
+    const [mindHistory, setMindHistory] = useState({ past: [], present: null, future: [] });
 
     const [showAddTableModal, setShowAddTableModal] = useState(false);
     const [addTableForm, setAddTableForm] = useState({ name: '', schema: '' });
@@ -90,8 +104,9 @@ function DiagramEditorContent() {
     const [teams, setTeams] = useState([]);
     const [showShareModal, setShowShareModal] = useState(false);
 
-    const canUndo = history.past.length > 0;
-    const canRedo = history.future.length > 0;
+    const activeHistory = editorMode === 'db' ? history : editorMode === 'flow' ? flowHistory : mindHistory;
+    const canUndo = activeHistory.past.length > 0;
+    const canRedo = activeHistory.future.length > 0;
 
     const permissions = diagram?.permissions ?? pagePermissions ?? {};
     const canView = Boolean(permissions.canView ?? true);
@@ -124,36 +139,100 @@ function DiagramEditorContent() {
     }, [buildSnapshot, relationships, tables]);
 
     const undoHistory = useCallback(() => {
-        setHistory((current) => {
+        if (editorMode === 'db') {
+            setHistory((current) => {
+                if (!current.past.length) return current;
+                const previous = current.past[current.past.length - 1];
+                const futureHead = current.present ? [buildSnapshot(current.present.tables, current.present.relationships)] : [];
+                setTables(cloneState(previous.tables));
+                setRelationships(cloneState(previous.relationships));
+                setSelectedEdgeId(null);
+                return {
+                    past: current.past.slice(0, -1),
+                    present: buildSnapshot(previous.tables, previous.relationships),
+                    future: [...futureHead, ...current.future],
+                };
+            });
+            return;
+        }
+
+        if (editorMode === 'flow') {
+            setFlowHistory((current) => {
+                if (!current.past.length) return current;
+                const previous = current.past[current.past.length - 1];
+                const futureHead = current.present ? [buildCanvasSnapshot(current.present.nodes, current.present.edges)] : [];
+                setFlowNodes(cloneState(previous.nodes));
+                setFlowEdges(cloneState(previous.edges));
+                return {
+                    past: current.past.slice(0, -1),
+                    present: buildCanvasSnapshot(previous.nodes, previous.edges),
+                    future: [...futureHead, ...current.future],
+                };
+            });
+            return;
+        }
+
+        setMindHistory((current) => {
             if (!current.past.length) return current;
             const previous = current.past[current.past.length - 1];
-            const futureHead = current.present ? [buildSnapshot(current.present.tables, current.present.relationships)] : [];
-            setTables(cloneState(previous.tables));
-            setRelationships(cloneState(previous.relationships));
-            setSelectedEdgeId(null);
+            const futureHead = current.present ? [buildCanvasSnapshot(current.present.nodes, current.present.edges)] : [];
+            setMindNodes(cloneState(previous.nodes));
+            setMindEdges(cloneState(previous.edges));
             return {
                 past: current.past.slice(0, -1),
-                present: buildSnapshot(previous.tables, previous.relationships),
+                present: buildCanvasSnapshot(previous.nodes, previous.edges),
                 future: [...futureHead, ...current.future],
             };
         });
-    }, [buildSnapshot]);
+    }, [buildCanvasSnapshot, buildSnapshot, editorMode]);
 
     const redoHistory = useCallback(() => {
-        setHistory((current) => {
+        if (editorMode === 'db') {
+            setHistory((current) => {
+                if (!current.future.length) return current;
+                const [next, ...remainingFuture] = current.future;
+                const nextPast = current.present ? [...current.past, buildSnapshot(current.present.tables, current.present.relationships)] : current.past;
+                setTables(cloneState(next.tables));
+                setRelationships(cloneState(next.relationships));
+                setSelectedEdgeId(null);
+                return {
+                    past: nextPast,
+                    present: buildSnapshot(next.tables, next.relationships),
+                    future: remainingFuture,
+                };
+            });
+            return;
+        }
+
+        if (editorMode === 'flow') {
+            setFlowHistory((current) => {
+                if (!current.future.length) return current;
+                const [next, ...remainingFuture] = current.future;
+                const nextPast = current.present ? [...current.past, buildCanvasSnapshot(current.present.nodes, current.present.edges)] : current.past;
+                setFlowNodes(cloneState(next.nodes));
+                setFlowEdges(cloneState(next.edges));
+                return {
+                    past: nextPast,
+                    present: buildCanvasSnapshot(next.nodes, next.edges),
+                    future: remainingFuture,
+                };
+            });
+            return;
+        }
+
+        setMindHistory((current) => {
             if (!current.future.length) return current;
             const [next, ...remainingFuture] = current.future;
-            const nextPast = current.present ? [...current.past, buildSnapshot(current.present.tables, current.present.relationships)] : current.past;
-            setTables(cloneState(next.tables));
-            setRelationships(cloneState(next.relationships));
-            setSelectedEdgeId(null);
+            const nextPast = current.present ? [...current.past, buildCanvasSnapshot(current.present.nodes, current.present.edges)] : current.past;
+            setMindNodes(cloneState(next.nodes));
+            setMindEdges(cloneState(next.edges));
             return {
                 past: nextPast,
-                present: buildSnapshot(next.tables, next.relationships),
+                present: buildCanvasSnapshot(next.nodes, next.edges),
                 future: remainingFuture,
             };
         });
-    }, [buildSnapshot]);
+    }, [buildCanvasSnapshot, buildSnapshot, editorMode]);
 
     const handle401 = useCallback((message) => setError(message ?? `${SESSION_EXPIRED_MESSAGE} to continue editing.`), []);
 
@@ -179,10 +258,23 @@ function DiagramEditorContent() {
                 sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'),
                 targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'),
             })));
+            const mode = diagramPayload.editor_mode ?? 'db';
+            const loadedFlowNodes = asCollection(diagramPayload?.flow_state?.nodes ?? [], 'nodes');
+            const loadedFlowEdges = asCollection(diagramPayload?.flow_state?.edges ?? [], 'edges');
+            const loadedMindNodes = asCollection(diagramPayload?.mind_state?.nodes ?? [], 'nodes');
+            const loadedMindEdges = asCollection(diagramPayload?.mind_state?.edges ?? [], 'edges');
+
             setDiagram(diagramPayload);
+            setEditorMode(mode);
             setTables(normalizedTables);
             setRelationships(relationshipRows);
+            setFlowNodes(loadedFlowNodes);
+            setFlowEdges(loadedFlowEdges);
+            setMindNodes(loadedMindNodes);
+            setMindEdges(loadedMindEdges);
             setHistory({ past: [], present: buildSnapshot(normalizedTables, relationshipRows), future: [] });
+            setFlowHistory({ past: [], present: { nodes: cloneState(loadedFlowNodes), edges: cloneState(loadedFlowEdges) }, future: [] });
+            setMindHistory({ past: [], present: { nodes: cloneState(loadedMindNodes), edges: cloneState(loadedMindEdges) }, future: [] });
         } catch (loadError) {
             if (loadError?.status === 401) return handle401();
             setError(loadError.message || 'Unable to load diagram.');
@@ -382,20 +474,91 @@ function DiagramEditorContent() {
         };
     }).filter(Boolean), [relationships, selectedEdgeId, columnToTableMap]);
 
+    const activeNodes = editorMode === 'db' ? nodes : editorMode === 'flow' ? flowNodes : mindNodes;
+    const activeEdges = useMemo(() => {
+        if (editorMode === 'db') return edges;
+        if (editorMode === 'flow') return flowEdges;
+
+        const collapsedIds = new Set(mindNodes.filter((node) => node.data?.collapsed).flatMap((node) => collectDescendantIds(node.id, mindNodes)));
+        return mindEdges.filter((edge) => !collapsedIds.has(edge.source) && !collapsedIds.has(edge.target));
+    }, [editorMode, edges, flowEdges, mindEdges, mindNodes]);
+
+    const commitFlowState = useCallback((nextNodes, nextEdges, previousNodes = flowNodes, previousEdges = flowEdges) => {
+        setFlowHistory((current) => ({
+            past: [...current.past, buildCanvasSnapshot(previousNodes, previousEdges)],
+            present: buildCanvasSnapshot(nextNodes, nextEdges),
+            future: [],
+        }));
+        setFlowNodes(nextNodes);
+        setFlowEdges(nextEdges);
+    }, [buildCanvasSnapshot, flowEdges, flowNodes]);
+
+    const commitMindState = useCallback((nextNodes, nextEdges, previousNodes = mindNodes, previousEdges = mindEdges) => {
+        setMindHistory((current) => ({
+            past: [...current.past, buildCanvasSnapshot(previousNodes, previousEdges)],
+            present: buildCanvasSnapshot(nextNodes, nextEdges),
+            future: [],
+        }));
+        setMindNodes(nextNodes);
+        setMindEdges(nextEdges);
+    }, [buildCanvasSnapshot, mindEdges, mindNodes]);
+
+
     const onNodesChange = useCallback((changes) => {
-        setNodes((current) => applyNodeChanges(changes, current));
-    }, []);
+        if (editorMode === 'db') {
+            setNodes((current) => applyNodeChanges(changes, current));
+            return;
+        }
+
+        if (editorMode === 'flow') {
+            setFlowNodes((current) => applyNodeChanges(changes, current));
+            return;
+        }
+
+        setMindNodes((current) => applyNodeChanges(changes, current));
+    }, [editorMode]);
+
+    const onEdgesChange = useCallback((changes) => {
+        if (editorMode === 'flow') {
+            setFlowEdges((current) => applyEdgeChanges(changes, current));
+            return;
+        }
+        if (editorMode === 'mind') {
+            setMindEdges((current) => applyEdgeChanges(changes, current));
+        }
+    }, [editorMode]);
 
     const onConnect = useCallback((connection) => {
         if (!canEdit || !editMode) return;
-        const sourceColumnId = parseColumnIdFromHandle(connection.sourceHandle);
-        const targetColumnId = parseColumnIdFromHandle(connection.targetHandle);
-        if (!sourceColumnId || !targetColumnId || sourceColumnId === targetColumnId) return;
-        const isDuplicate = relationships.some((entry) => Number(entry.from_column_id) === sourceColumnId && Number(entry.to_column_id) === targetColumnId);
-        if (isDuplicate) return;
-        setRelationshipDraft({ sourceHandle: connection.sourceHandle, targetHandle: connection.targetHandle, from_column_id: sourceColumnId, to_column_id: targetColumnId });
-        setRelationshipModalState({ open: true, mode: 'create', type: 'one_to_many' });
-    }, [canEdit, editMode, relationships]);
+
+        if (editorMode === 'db') {
+            const sourceColumnId = parseColumnIdFromHandle(connection.sourceHandle);
+            const targetColumnId = parseColumnIdFromHandle(connection.targetHandle);
+            if (!sourceColumnId || !targetColumnId || sourceColumnId === targetColumnId) return;
+            const isDuplicate = relationships.some((entry) => Number(entry.from_column_id) === sourceColumnId && Number(entry.to_column_id) === targetColumnId);
+            if (isDuplicate) return;
+            setRelationshipDraft({ sourceHandle: connection.sourceHandle, targetHandle: connection.targetHandle, from_column_id: sourceColumnId, to_column_id: targetColumnId });
+            setRelationshipModalState({ open: true, mode: 'create', type: 'one_to_many' });
+            return;
+        }
+
+        const nextEdge = {
+            id: `edge-${crypto.randomUUID()}`,
+            type: 'bezier',
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#475569' },
+            style: { stroke: '#64748b', strokeWidth: 2 },
+            ...connection,
+            label: '',
+        };
+
+        if (editorMode === 'flow') {
+            commitFlowState(flowNodes, addEdge(nextEdge, flowEdges));
+        }
+
+        if (editorMode === 'mind') {
+            commitMindState(mindNodes, addEdge({ ...nextEdge, style: { stroke: '#94a3b8', strokeWidth: 1.8 } }, mindEdges));
+        }
+    }, [canEdit, commitFlowState, commitMindState, editMode, editorMode, flowEdges, flowNodes, mindEdges, mindNodes, relationships]);
 
     const onNodeClick = useCallback((_, node) => {
         setSelectedNodeId(String(node.id));
@@ -408,12 +571,12 @@ function DiagramEditorContent() {
     }, []);
 
     const onEdgeDoubleClick = useCallback((_, edge) => {
-        if (!canEdit || !editMode) return;
+        if (editorMode !== 'db' || !canEdit || !editMode) return;
         const relationship = relationships.find((entry) => String(entry.id) === String(edge.id));
         if (!relationship) return;
         setRelationshipDraft(relationship);
         setRelationshipModalState({ open: true, mode: 'edit', type: relationship.type ?? 'one_to_many' });
-    }, [canEdit, editMode, relationships]);
+    }, [canEdit, editMode, editorMode, relationships]);
 
     const deleteSelectedRelationship = useCallback(async () => {
         if (!selectedEdgeId) return;
@@ -421,21 +584,37 @@ function DiagramEditorContent() {
             notifyEditModeRequired();
             return;
         }
-        const previousRelationships = relationships;
-        const nextRelationships = relationships.filter((relationship) => String(relationship.id) !== String(selectedEdgeId));
-        commitEditorState(tables, nextRelationships, tables, previousRelationships);
-        setSelectedEdgeId(null);
-        try {
-            setSavingState('Saving...');
-            await api.delete(`/api/v1/diagram-relationships/${selectedEdgeId}`);
-            schedulePreviewUpload();
-            setSavingState('Autosaved');
-        } catch (deleteError) {
-            setRelationships(previousRelationships);
-            setSavingState('Error');
-            setError(deleteError.message || 'Failed to delete relationship.');
+
+        if (editorMode === 'db') {
+            const previousRelationships = relationships;
+            const nextRelationships = relationships.filter((relationship) => String(relationship.id) !== String(selectedEdgeId));
+            commitEditorState(tables, nextRelationships, tables, previousRelationships);
+            setSelectedEdgeId(null);
+            try {
+                setSavingState('Saving...');
+                await api.delete(`/api/v1/diagram-relationships/${selectedEdgeId}`);
+                schedulePreviewUpload();
+                setSavingState('Autosaved');
+            } catch (deleteError) {
+                setRelationships(previousRelationships);
+                setSavingState('Error');
+                setError(deleteError.message || 'Failed to delete relationship.');
+            }
+            return;
         }
-    }, [canEdit, commitEditorState, editMode, notifyEditModeRequired, relationships, schedulePreviewUpload, selectedEdgeId, tables]);
+
+        if (editorMode === 'flow') {
+            const nextEdges = flowEdges.filter((edge) => edge.id !== selectedEdgeId);
+            commitFlowState(flowNodes, nextEdges);
+        }
+
+        if (editorMode === 'mind') {
+            const nextEdges = mindEdges.filter((edge) => edge.id !== selectedEdgeId);
+            commitMindState(mindNodes, nextEdges);
+        }
+
+        setSelectedEdgeId(null);
+    }, [canEdit, commitEditorState, commitFlowState, commitMindState, editMode, editorMode, flowEdges, flowNodes, mindEdges, mindNodes, notifyEditModeRequired, relationships, schedulePreviewUpload, selectedEdgeId, tables]);
 
     const deleteSelectedNode = useCallback(async () => {
         if (!selectedNodeId) return;
@@ -443,33 +622,55 @@ function DiagramEditorContent() {
             notifyEditModeRequired();
             return;
         }
-        const deletedTable = tables.find((table) => String(table.id) === String(selectedNodeId));
-        if (!deletedTable) return;
-        const deletedColumnIds = new Set((deletedTable.columns ?? []).map((column) => Number(column.id)));
-        const previousTables = tables;
-        const previousRelationships = relationships;
-        const nextTables = tables.filter((table) => String(table.id) !== String(selectedNodeId));
-        const nextRelationships = relationships.filter((relationship) => {
-            const sourceTableId = columnToTableMap[relationship.from_column_id];
-            const targetTableId = columnToTableMap[relationship.to_column_id];
-            if (String(sourceTableId) === String(selectedNodeId) || String(targetTableId) === String(selectedNodeId)) return false;
-            if (deletedColumnIds.has(Number(relationship.from_column_id)) || deletedColumnIds.has(Number(relationship.to_column_id))) return false;
-            return true;
-        });
-        commitEditorState(nextTables, nextRelationships, previousTables, previousRelationships);
+
+        if (editorMode === 'db') {
+            const deletedTable = tables.find((table) => String(table.id) === String(selectedNodeId));
+            if (!deletedTable) return;
+            const deletedColumnIds = new Set((deletedTable.columns ?? []).map((column) => Number(column.id)));
+            const previousTables = tables;
+            const previousRelationships = relationships;
+            const nextTables = tables.filter((table) => String(table.id) !== String(selectedNodeId));
+            const nextRelationships = relationships.filter((relationship) => {
+                const sourceTableId = columnToTableMap[relationship.from_column_id];
+                const targetTableId = columnToTableMap[relationship.to_column_id];
+                if (String(sourceTableId) === String(selectedNodeId) || String(targetTableId) === String(selectedNodeId)) return false;
+                if (deletedColumnIds.has(Number(relationship.from_column_id)) || deletedColumnIds.has(Number(relationship.to_column_id))) return false;
+                return true;
+            });
+            commitEditorState(nextTables, nextRelationships, previousTables, previousRelationships);
+            setSelectedNodeId(null);
+            setSelectedEdgeId(null);
+            try {
+                setSavingState('Saving...');
+                await api.delete(`/api/v1/diagram-tables/${selectedNodeId}`);
+                setSavingState('Autosaved');
+            } catch (deleteError) {
+                setTables(previousTables);
+                setRelationships(previousRelationships);
+                setSavingState('Error');
+                setError(deleteError.message || 'Failed to delete table.');
+            }
+            return;
+        }
+
+        if (editorMode === 'flow') {
+            const nextNodes = flowNodes.filter((node) => node.id !== selectedNodeId);
+            const nextEdges = flowEdges.filter((edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId);
+            commitFlowState(nextNodes, nextEdges);
+        }
+
+        if (editorMode === 'mind') {
+            const descendants = collectDescendantIds(selectedNodeId, mindNodes);
+            const allIds = new Set([selectedNodeId, ...descendants]);
+            if (descendants.length && !window.confirm('Delete selected node and descendants?')) return;
+            const nextNodes = mindNodes.filter((node) => !allIds.has(node.id));
+            const nextEdges = mindEdges.filter((edge) => !allIds.has(edge.source) && !allIds.has(edge.target));
+            commitMindState(nextNodes, nextEdges);
+        }
+
         setSelectedNodeId(null);
         setSelectedEdgeId(null);
-        try {
-            setSavingState('Saving...');
-            await api.delete(`/api/v1/diagram-tables/${selectedNodeId}`);
-            setSavingState('Autosaved');
-        } catch (deleteError) {
-            setTables(previousTables);
-            setRelationships(previousRelationships);
-            setSavingState('Error');
-            setError(deleteError.message || 'Failed to delete table.');
-        }
-    }, [canEdit, columnToTableMap, commitEditorState, editMode, notifyEditModeRequired, relationships, selectedNodeId, tables]);
+    }, [canEdit, columnToTableMap, commitEditorState, commitFlowState, commitMindState, editMode, editorMode, flowEdges, flowNodes, mindEdges, mindNodes, notifyEditModeRequired, relationships, selectedNodeId, tables]);
 
     const deleteSelection = useCallback(async () => {
         if (selectedEdgeId) {
@@ -479,17 +680,42 @@ function DiagramEditorContent() {
         if (selectedNodeId) await deleteSelectedNode();
     }, [deleteSelectedNode, deleteSelectedRelationship, selectedEdgeId, selectedNodeId]);
 
+
     useEffect(() => {
         const onKeyDown = (event) => {
             if (!canEdit) return;
-            if (event.key !== 'Delete' && event.key !== 'Backspace') return;
-            if (!selectedEdgeId && !selectedNodeId) return;
-            event.preventDefault();
-            deleteSelection();
+
+            if ((event.key === 'Delete' || event.key === 'Backspace') && (selectedEdgeId || selectedNodeId)) {
+                event.preventDefault();
+                deleteSelection();
+                return;
+            }
+
+            if (editorMode !== 'mind' || !editMode || !selectedNodeId) return;
+            const selected = mindNodes.find((node) => node.id === selectedNodeId);
+            if (!selected) return;
+
+            if (event.key === 'Tab') {
+                event.preventDefault();
+                const childrenCount = mindNodes.filter((node) => node.data?.parentId === selected.id).length;
+                const child = createMindChildNode(selected, childrenCount);
+                commitMindState([...mindNodes, child], [...mindEdges, { id: `edge-${crypto.randomUUID()}`, source: selected.id, target: child.id, type: 'bezier', style: { stroke: selected.data?.branchColor ?? '#94a3b8', strokeWidth: 2 } }]);
+                setSelectedNodeId(child.id);
+            }
+
+            if (event.key === 'Enter' && selected.data?.parentId) {
+                event.preventDefault();
+                const parent = mindNodes.find((node) => node.id === selected.data.parentId);
+                if (!parent) return;
+                const siblingsCount = mindNodes.filter((node) => node.data?.parentId === parent.id).length;
+                const sibling = createMindChildNode(parent, siblingsCount);
+                commitMindState([...mindNodes, sibling], [...mindEdges, { id: `edge-${crypto.randomUUID()}`, source: parent.id, target: sibling.id, type: 'bezier', style: { stroke: parent.data?.branchColor ?? '#94a3b8', strokeWidth: 2 } }]);
+                setSelectedNodeId(sibling.id);
+            }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [canEdit, deleteSelection, selectedEdgeId, selectedNodeId]);
+    }, [canEdit, commitMindState, deleteSelection, editMode, editorMode, mindEdges, mindNodes, selectedEdgeId, selectedNodeId]);
 
     const miniMapNodeColor = useCallback((node) => {
         const colorValue = node?.data?.table?.color ?? node?.data?.color;
@@ -528,6 +754,18 @@ function DiagramEditorContent() {
     };
 
     const onNodeDragStop = useCallback(async (_, node) => {
+        if (editorMode === 'flow') {
+            const nextNodes = flowNodes.map((entry) => (entry.id === node.id ? { ...entry, position: node.position } : entry));
+            commitFlowState(nextNodes, flowEdges, flowNodes, flowEdges);
+            return;
+        }
+
+        if (editorMode === 'mind') {
+            const nextNodes = mindNodes.map((entry) => (entry.id === node.id ? { ...entry, position: node.position } : entry));
+            commitMindState(nextNodes, mindEdges, mindNodes, mindEdges);
+            return;
+        }
+
         const previousTables = tables;
         const nextTables = tables.map((table) => (String(table.id) === String(node.id) ? { ...table, x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) } : table));
         commitEditorState(nextTables, relationships, previousTables, relationships);
@@ -542,7 +780,7 @@ function DiagramEditorContent() {
             if (dragError?.status === 401) return handle401();
             setError(dragError.message || 'Failed to update table position.');
         }
-    }, [commitEditorState, handle401, relationships, schedulePreviewUpload, tables]);
+    }, [commitEditorState, commitFlowState, commitMindState, editorMode, flowEdges, flowNodes, handle401, mindEdges, mindNodes, relationships, schedulePreviewUpload, tables]);
 
     const handleViewportSave = useCallback((viewport) => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
@@ -554,18 +792,102 @@ function DiagramEditorContent() {
 
     const manualSave = async () => {
         try {
+            if (!canEdit) {
+                setError('No edit permission.');
+                return;
+            }
             setSavingState('Saving...');
             if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
             const viewport = reactFlowRef.current?.getViewport?.() ?? diagram?.viewport ?? { x: 0, y: 0, zoom: 1 };
-            await Promise.all(nodes.map((node) => api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) })));
-            await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport });
-            await uploadDiagramPreview();
+
+            if (editorMode === 'db') {
+                await Promise.all(nodes.map((node) => api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) })));
+                await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport });
+                await uploadDiagramPreview();
+            } else if (editorMode === 'flow') {
+                await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport, editor_mode: editorMode, flow_state: { nodes: flowNodes, edges: flowEdges } });
+            } else {
+                await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport, editor_mode: editorMode, mind_state: { nodes: mindNodes, edges: mindEdges } });
+            }
+
             setSavingState('Saved');
         } catch (saveError) {
             setSavingState('Error');
             setError(saveError.message || 'Manual save failed.');
         }
     };
+
+
+
+    const handleEditorModeChange = useCallback(async (nextMode) => {
+        setEditorMode(nextMode);
+        if (!canEdit) {
+            setError('No edit permission.');
+            return;
+        }
+
+        try {
+            await api.patch(`/api/v1/diagrams/${diagramId}`, { editor_mode: nextMode });
+            setDiagram((current) => ({ ...current, editor_mode: nextMode }));
+        } catch (modeError) {
+            setError(modeError.message || 'Failed to switch mode.');
+        }
+    }, [canEdit, diagramId]);
+
+    const updateFlowNodeData = useCallback((nodeId, patch) => {
+        if (!canEdit || !editMode) return;
+        setFlowNodes((current) => current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...patch } } : node)));
+    }, [canEdit, editMode]);
+
+    const updateMindNodeData = useCallback((nodeId, patch) => {
+        if (!canEdit || !editMode) return;
+        setMindNodes((current) => current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...patch } } : node)));
+    }, [canEdit, editMode]);
+
+    const addFlowNode = useCallback((nodeType) => {
+        if (!canEdit || !editMode) return;
+        const viewport = reactFlowRef.current?.getViewport?.() ?? { x: 0, y: 0, zoom: 1 };
+        const nextNode = createFlowNode(nodeType, { x: Math.round(-viewport.x / viewport.zoom + 220), y: Math.round(-viewport.y / viewport.zoom + 120) });
+        commitFlowState([...flowNodes, nextNode], flowEdges);
+        setSelectedNodeId(nextNode.id);
+    }, [canEdit, commitFlowState, editMode, flowEdges, flowNodes]);
+
+    const addMindRoot = useCallback(() => {
+        if (!canEdit || !editMode || mindNodes.length) return;
+        const root = createMindRootNode({ x: 120, y: 120 });
+        commitMindState([root], []);
+        setSelectedNodeId(root.id);
+    }, [canEdit, commitMindState, editMode, mindNodes.length]);
+
+    const addMindChild = useCallback(() => {
+        if (!canEdit || !editMode || !selectedNodeId) return;
+        const parent = mindNodes.find((node) => node.id === selectedNodeId);
+        if (!parent) return;
+        const siblings = mindNodes.filter((node) => node.data?.parentId === parent.id).length;
+        const child = createMindChildNode(parent, siblings);
+        commitMindState([...mindNodes, child], [...mindEdges, { id: `edge-${crypto.randomUUID()}`, source: parent.id, target: child.id, type: 'bezier', style: { stroke: parent.data?.branchColor ?? '#94a3b8', strokeWidth: 2 } }]);
+        setSelectedNodeId(child.id);
+    }, [canEdit, commitMindState, editMode, mindEdges, mindNodes, selectedNodeId]);
+
+    useEffect(() => {
+        if (!canEdit || editorMode === 'db') return;
+        const timer = window.setTimeout(async () => {
+            try {
+                const viewport = reactFlowRef.current?.getViewport?.() ?? diagram?.viewport ?? { x: 0, y: 0, zoom: 1 };
+                setSavingState('Saving...');
+                if (editorMode === 'flow') {
+                    await api.patch(`/api/v1/diagrams/${diagramId}`, { editor_mode: editorMode, flow_state: { nodes: flowNodes, edges: flowEdges }, viewport });
+                } else {
+                    await api.patch(`/api/v1/diagrams/${diagramId}`, { editor_mode: editorMode, mind_state: { nodes: mindNodes, edges: mindEdges }, viewport });
+                }
+                setSavingState('Autosaved');
+            } catch (saveError) {
+                setSavingState('Error');
+            }
+        }, 500);
+
+        return () => window.clearTimeout(timer);
+    }, [canEdit, diagram?.viewport, diagramId, editorMode, flowEdges, flowNodes, mindEdges, mindNodes]);
 
     const submitAddTable = async (event) => {
         event.preventDefault();
@@ -712,7 +1034,11 @@ function DiagramEditorContent() {
         }
     }
 
-    const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
+    const nodeTypes = useMemo(() => {
+        if (editorMode === 'flow') return flowNodeTypes;
+        if (editorMode === 'mind') return mindNodeTypes;
+        return { tableNode: TableNode };
+    }, [editorMode]);
 
     if (loading) return <section className="flex h-screen items-center justify-center"><p className="text-sm text-slate-600">Loading diagram…</p></section>;
 
@@ -724,22 +1050,58 @@ function DiagramEditorContent() {
         <>
             <Head title={diagram?.name ? `Diagram: ${diagram.name}` : `Diagram ${diagramId}`} />
             <section className="flex h-screen bg-slate-100">
-                <Sidebar
-                    diagramName={diagram?.name || `Diagram #${diagramId}`}
-                    tables={tables}
-                    isCollapsed={sidebarCollapsed}
-                    onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
-                    onFocusTable={focusOnTable}
-                    onFocusColumn={setSelectedColumnId}
-                    onAddTable={() => { if (!canEdit || !editMode) return; setFormErrors({}); setShowAddTableModal(true); }}
-                    onAddColumn={onAddColumn}
-                    onEditColumn={onEditColumn}
-                    onDeleteColumn={onDeleteColumn}
-                    onUpdateTableColor={onUpdateTableColor}
-                    editMode={canEdit && editMode}
-                    onToggleEditMode={() => { if (!canEdit) return; setEditMode((current) => !current); setActiveEditTableId(null); }}
-                    canEdit={canEdit}
-                />
+                {editorMode === 'db' && (
+                    <Sidebar
+                        diagramName={diagram?.name || `Diagram #${diagramId}`}
+                        tables={tables}
+                        isCollapsed={sidebarCollapsed}
+                        onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
+                        onFocusTable={focusOnTable}
+                        onFocusColumn={setSelectedColumnId}
+                        onAddTable={() => { if (!canEdit || !editMode) return; setFormErrors({}); setShowAddTableModal(true); }}
+                        onAddColumn={onAddColumn}
+                        onEditColumn={onEditColumn}
+                        onDeleteColumn={onDeleteColumn}
+                        onUpdateTableColor={onUpdateTableColor}
+                        editMode={canEdit && editMode}
+                        onToggleEditMode={() => { if (!canEdit) return; setEditMode((current) => !current); setActiveEditTableId(null); }}
+                        canEdit={canEdit}
+                    />
+                )}
+                {editorMode === 'flow' && (
+                    <FlowSidebar
+                        isCollapsed={sidebarCollapsed}
+                        onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
+                        onAddNode={addFlowNode}
+                        selectedNode={flowNodes.find((node) => node.id === selectedNodeId)}
+                        onUpdateNode={updateFlowNodeData}
+                        onFocusNode={(nodeId) => {
+                            setSelectedNodeId(nodeId);
+                            const node = flowNodes.find((entry) => entry.id === nodeId);
+                            if (node) reactFlowRef.current?.setCenter(node.position.x, node.position.y, { zoom: 1.1, duration: 350 });
+                        }}
+                        nodes={flowNodes}
+                        editMode={canEdit && editMode}
+                    />
+                )}
+                {editorMode === 'mind' && (
+                    <MindSidebar
+                        isCollapsed={sidebarCollapsed}
+                        onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
+                        nodes={mindNodes}
+                        selectedNode={mindNodes.find((node) => node.id === selectedNodeId)}
+                        onAddRoot={addMindRoot}
+                        onAddChild={addMindChild}
+                        onDeleteNode={deleteSelectedNode}
+                        onUpdateNode={updateMindNodeData}
+                        onFocusNode={(nodeId) => {
+                            setSelectedNodeId(nodeId);
+                            const node = mindNodes.find((entry) => entry.id === nodeId);
+                            if (node) reactFlowRef.current?.setCenter(node.position.x, node.position.y, { zoom: 1.1, duration: 350 });
+                        }}
+                        editMode={canEdit && editMode}
+                    />
+                )}
 
                 <div className="flex min-w-0 flex-1 flex-col">
                     <Toolbar
@@ -763,6 +1125,10 @@ function DiagramEditorContent() {
                         canManageAccess={canManageAccess}
                         onManageAccess={() => setShowShareModal(true)}
                         isViewOnly={!canEdit}
+                        editorMode={editorMode}
+                        onEditorModeChange={handleEditorModeChange}
+                        canChangeMode={canEdit}
+                        onQuickAddFlowShape={() => addFlowNode('rectangle')}
                     />
 
                     {!editMode && <div className="mx-4 mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">View mode</div>}
@@ -777,8 +1143,8 @@ function DiagramEditorContent() {
 
                     <div className="m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                         <ReactFlow
-                            nodes={nodes}
-                            edges={edges}
+                            nodes={activeNodes}
+                            edges={activeEdges}
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
@@ -790,10 +1156,11 @@ function DiagramEditorContent() {
                             onEdgeClick={onEdgeClick}
                             onEdgeDoubleClick={onEdgeDoubleClick}
                             onPaneClick={() => { setSelectedEdgeId(null); setSelectedNodeId(null); }}
+                            onEdgesChange={onEdgesChange}
                             onMoveEnd={(_, viewport) => handleViewportSave(viewport)}
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={{ type: 'bezier' }}
-                            connectionMode="strict"
+                            connectionMode={editorMode === 'db' ? 'strict' : 'loose'}
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
                             {showMiniMap && <MiniMap pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
@@ -826,15 +1193,27 @@ function DiagramEditorContent() {
                     setShowExportModal(false);
                 }}
                 onExportJson={async () => {
-                    const latestDiagram = await api.get(`/api/v1/diagrams/${diagramId}`);
-                    const payload = JSON.stringify(latestDiagram?.data ?? latestDiagram, null, 2);
+                    let payload = {};
+                    if (editorMode === 'db') {
+                        const latestDiagram = await api.get(`/api/v1/diagrams/${diagramId}`);
+                        payload = latestDiagram?.data ?? latestDiagram;
+                    } else {
+                        payload = {
+                            mode: editorMode,
+                            nodes: editorMode === 'flow' ? flowNodes : mindNodes,
+                            edges: editorMode === 'flow' ? flowEdges : mindEdges,
+                            viewport: reactFlowRef.current?.getViewport?.() ?? diagram?.viewport ?? { x: 0, y: 0, zoom: 1 },
+                        };
+                    }
+                    const text = JSON.stringify(payload, null, 2);
                     const link = document.createElement('a');
-                    link.href = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
-                    link.download = `diagram-${diagramId}.json`;
+                    link.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+                    link.download = `diagram-${diagramId}-${editorMode}.json`;
                     link.click();
                     URL.revokeObjectURL(link.href);
                     setShowExportModal(false);
                 }}
+                editorMode={editorMode}
             />
             <OpenDiagramModal open={showOpenModal} diagrams={allDiagrams} onClose={() => setShowOpenModal(false)} onOpen={(selected) => router.visit(`/diagrams/${selected.id}`)} />
             <NewDiagramModal open={showNewModal} teams={teams} onClose={() => setShowNewModal(false)} onCreate={async (payload) => { const created = await api.post('/api/v1/diagrams', payload); router.visit(`/diagrams/${created?.id}`); }} />

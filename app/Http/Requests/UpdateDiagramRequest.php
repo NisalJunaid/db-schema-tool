@@ -20,6 +20,9 @@ class UpdateDiagramRequest extends FormRequest
             'viewport.x' => ['nullable', 'numeric'],
             'viewport.y' => ['nullable', 'numeric'],
             'viewport.zoom' => ['nullable', 'numeric'],
+            'editor_mode' => ['nullable', 'string', 'in:db,flow,mind'],
+            'flow_state' => ['nullable', 'array'],
+            'mind_state' => ['nullable', 'array'],
             'preview_image' => ['nullable', 'string'],
             'preview_path' => ['nullable', 'string', 'max:255'],
         ];
