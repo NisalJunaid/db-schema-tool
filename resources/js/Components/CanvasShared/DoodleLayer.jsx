@@ -20,7 +20,7 @@ export default function DoodleLayer({
     if (!visible) return null;
 
     return (
-        <div className="pointer-events-none absolute inset-0 z-20">
+        <div className="pointer-events-none absolute inset-0 z-10">
             <svg className="absolute inset-0 h-full w-full">
                 {enabled && (
                     <rect

@@ -184,7 +184,7 @@ function DiagramEditorContent() {
     const isPanTool = isFlow && activeTool === FLOW_PAN_TOOL;
     const isConnectorTool = isFlow && activeTool === FLOW_CONNECTOR_TOOL;
     const isSelectTool = isFlow && activeTool === FLOW_SELECT_TOOL;
-    const isPenTool = isFlow && activeTool === FLOW_PEN_TOOL;
+    const isPenTool = isCanvasMode && activeTool === FLOW_PEN_TOOL;
 
     const columnToTableMap = useMemo(() => {
         const map = {};
@@ -684,11 +684,8 @@ function DiagramEditorContent() {
     const handlePaneMouseDown = useCallback((event) => {
         if (editorMode !== 'flow') return;
 
-        console.log('Tool:', activeTool, 'EditMode:', editMode, 'CanEdit:', canEdit);
-
         if (isPanTool) {
             setIsPanningCanvas(true);
-            return;
         }
 
         if (!canEdit) return;
@@ -703,6 +700,7 @@ function DiagramEditorContent() {
         if (event.target?.closest?.('.react-flow__edge')) return;
         if (event.target?.closest?.('.react-flow__controls')) return;
         if (event.target?.closest?.('.react-flow__minimap')) return;
+        if (!event.target?.closest?.('.react-flow__pane')) return;
 
         if (FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) {
             const position = toFlowPoint(event.clientX, event.clientY);
@@ -1356,19 +1354,21 @@ function DiagramEditorContent() {
     }, [activeTool]);
 
     const getCursor = useCallback(() => {
-        if (!isFlow) return 'default';
+        if (!isCanvasMode) return 'default';
         if (!editMode) return 'default';
         if (isPanTool) return isPanningCanvas ? 'grabbing' : 'grab';
-        if (isConnectorTool || isDrawTool || isClickTool || isPenTool) return 'crosshair';
+        if (isPenTool || isDrawTool || isConnectorTool) return 'crosshair';
+        if (activeTool === 'text') return 'text';
+        if (activeTool === 'sticky') return 'copy';
         return 'default';
-    }, [editMode, isClickTool, isConnectorTool, isDrawTool, isFlow, isPanTool, isPenTool, isPanningCanvas]);
+    }, [activeTool, editMode, isCanvasMode, isConnectorTool, isDrawTool, isPanTool, isPenTool, isPanningCanvas]);
 
     const canvasCursor = useMemo(() => {
         if (!isFlow) return '';
         return isPanningCanvas ? `tool-${activeTool} is-panning` : `tool-${activeTool}`;
     }, [activeTool, isFlow, isPanningCanvas]);
 
-    const doodleEnabled = canEdit && editMode && showInk && isCanvasMode && activeTool === 'pen';
+    const doodleEnabled = isCanvasMode && showInk && isPenTool && canEdit && editMode;
 
     const renderedNodes = useMemo(() => {
         if (editorMode === 'db') return Array.isArray(activeNodes) ? activeNodes : [];
@@ -1651,7 +1651,7 @@ function DiagramEditorContent() {
 
                     <div
                         className={`react-flow-wrapper flow-canvas relative m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${canvasCursor}`}
-                        style={isFlow ? { cursor: getCursor() } : undefined}
+                        style={isCanvasMode ? { cursor: getCursor() } : undefined}
                     >
 
                         {editorMode === 'flow' && (
@@ -1680,10 +1680,10 @@ function DiagramEditorContent() {
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            panOnDrag={isFlow ? isPanTool : editorMode === 'mind' ? canEdit && editMode && activeTool === 'pan' : undefined}
+                            panOnDrag={isFlow ? (isPanTool ? [0] : false) : (editorMode === 'mind' ? canEdit && editMode && activeTool === 'pan' : undefined)}
                             nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode && isSelectTool : canEdit && editMode}
                             elementsSelectable={editorMode === 'db' ? true : isFlow ? (isSelectTool || isConnectorTool) : canEdit && editMode}
-                            selectionOnDrag={editorMode === 'db' ? true : isFlow ? isSelectTool : canEdit && editMode}
+                            selectionOnDrag={editorMode === 'db' ? true : isFlow ? (!isPanTool && isSelectTool) : canEdit && editMode}
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
                             zoomOnScroll
@@ -1744,7 +1744,7 @@ function DiagramEditorContent() {
                         {(editorMode === 'flow' || editorMode === 'mind') && (
                             <DoodleLayer
                                 enabled={doodleEnabled}
-                                visible={showInk}
+                                visible={isCanvasMode && showInk}
                                 doodles={activeDoodles}
                                 activeStroke={activeStroke}
                                 selectedId={selectedDoodleId}
