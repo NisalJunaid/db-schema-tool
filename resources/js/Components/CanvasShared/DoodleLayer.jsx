@@ -20,13 +20,13 @@ export default function DoodleLayer({
 
     return (
         <div
-            className="absolute inset-0 z-30 pointer-events-auto"
+            className={`absolute inset-0 z-30 ${enabled ? 'pointer-events-auto' : 'pointer-events-none'}`}
             onMouseDown={enabled ? onPointerDown : undefined}
             onMouseMove={enabled ? onPointerMove : undefined}
             onMouseUp={enabled ? onPointerUp : undefined}
             onMouseLeave={enabled ? onPointerUp : undefined}
         >
-            <svg className="absolute inset-0 h-full w-full" onMouseDown={() => !enabled && onSelect?.(null)}>
+            <svg className="absolute inset-0 h-full w-full">
                 {rendered.map((doodle) => {
                     const width = Number(doodle.strokeWidth ?? 2.5);
                     const selected = doodle.id === selectedId;
@@ -51,10 +51,6 @@ export default function DoodleLayer({
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                                 pointerEvents="stroke"
-                                onMouseDown={(event) => {
-                                    event.stopPropagation();
-                                    if (!enabled) onSelect?.(doodle.id);
-                                }}
                                 onMouseEnter={() => setHovered(doodle.id)}
                                 onMouseLeave={() => setHovered(null)}
                             />

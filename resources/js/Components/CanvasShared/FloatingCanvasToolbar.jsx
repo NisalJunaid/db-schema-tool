@@ -33,8 +33,8 @@ export default function FloatingCanvasToolbar({
         { key: 'circle', title: 'Circle', icon: 'fa-regular fa-circle', addType: 'circle' },
         { key: 'text', title: 'Text', icon: 'fa-solid fa-font', addType: 'text' },
         { key: 'sticky', title: 'Sticky Note', icon: 'fa-solid fa-note-sticky', addType: 'sticky' },
-        { key: 'arrow', title: 'Arrow connector', icon: 'fa-solid fa-arrow-right-long' },
-        { key: 'pan', title: 'Hand / Pan', icon: 'fa-regular fa-hand' },
+        { key: 'connector', title: 'Arrow connector', icon: 'fa-solid fa-arrow-right-long' },
+        { key: 'pan', title: 'Pan', icon: 'fa-regular fa-hand' },
     ];
 
     const mindTools = [
@@ -42,7 +42,7 @@ export default function FloatingCanvasToolbar({
         { key: 'child', title: 'Add child', icon: 'fa-solid fa-code-branch', onClick: onAddChild },
         { key: 'sibling', title: 'Add sibling', icon: 'fa-solid fa-share-nodes', onClick: onAddSibling },
         { key: 'topic', title: 'Add floating topic', icon: 'fa-solid fa-lightbulb' },
-        { key: 'pan', title: 'Hand / Pan', icon: 'fa-regular fa-hand' },
+        { key: 'pan', title: 'Pan', icon: 'fa-regular fa-hand' },
     ];
 
     const tools = editorMode === 'flow' ? flowTools : mindTools;

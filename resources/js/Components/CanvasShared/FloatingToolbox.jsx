@@ -1,10 +1,10 @@
 const flowTools = [
     { key: 'select', icon: 'fa-solid fa-arrow-pointer', title: 'Select' },
-    { key: 'hand', icon: 'fa-regular fa-hand', title: 'Pan / Hand' },
+    { key: 'pan', icon: 'fa-regular fa-hand', title: 'Pan' },
     { key: 'rect', icon: 'fa-regular fa-square', title: 'Rectangle' },
-    { key: 'roundRect', icon: 'fa-regular fa-square-full', title: 'Rounded Rectangle' },
+    { key: 'rounded', icon: 'fa-regular fa-square-full', title: 'Rounded Rectangle' },
     { key: 'diamond', icon: 'fa-regular fa-gem', title: 'Diamond' },
-    { key: 'ellipse', icon: 'fa-regular fa-circle', title: 'Ellipse' },
+    { key: 'circle', icon: 'fa-regular fa-circle', title: 'Ellipse' },
     { key: 'sticky', icon: 'fa-solid fa-note-sticky', title: 'Sticky Note' },
     { key: 'text', icon: 'fa-solid fa-font', title: 'Text' },
     { key: 'connector', icon: 'fa-solid fa-arrow-right-long', title: 'Connector' },
@@ -13,7 +13,7 @@ const flowTools = [
 
 const mindTools = [
     { key: 'select', icon: 'fa-solid fa-arrow-pointer', title: 'Select' },
-    { key: 'hand', icon: 'fa-regular fa-hand', title: 'Pan / Hand' },
+    { key: 'pan', icon: 'fa-regular fa-hand', title: 'Pan' },
     { key: 'topic', icon: 'fa-solid fa-circle-plus', title: 'Topic' },
     { key: 'child', icon: 'fa-solid fa-diagram-next', title: 'Add Child' },
     { key: 'sibling', icon: 'fa-solid fa-code-branch', title: 'Add Sibling' },
