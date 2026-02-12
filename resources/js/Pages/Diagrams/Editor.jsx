@@ -38,6 +38,9 @@ const EXCLUDED_CAPTURE_CLASSES = new Set(['react-flow__controls', 'react-flow__m
 const FLOW_DRAW_TOOLS = ['rect', 'rounded', 'diamond', 'circle', 'text', 'sticky'];
 const TOOL_COMPATIBILITY_MAP = { hand: 'pan', arrow: 'connector' };
 const FLOW_RESIZE_COMMIT_DELAY = 250;
+const FLOW_DRAW_MIN_WIDTH = 60;
+const FLOW_DRAW_MIN_HEIGHT = 40;
+const FLOW_DRAW_CANCEL_THRESHOLD = 6;
 
 const normalizeTable = (rawTable) => ({ ...rawTable, columns: asCollection(rawTable.columns ?? rawTable.diagram_columns, 'diagram_columns') });
 const cloneState = (value) => JSON.parse(JSON.stringify(value));
@@ -116,7 +119,7 @@ function DiagramEditorContent() {
     const [showInk, setShowInk] = useState(true);
     const [isDrawingShape, setIsDrawingShape] = useState(false);
     const [isPanning, setIsPanning] = useState(false);
-    const drawingRef = useRef({ start: null, nodeId: null, type: null });
+    const drawingRef = useRef({ start: null, nodeId: null, type: null, previousNodes: null, rawWidth: 0, rawHeight: 0 });
     const [selectedDoodleId, setSelectedDoodleId] = useState(null);
     const [flowDoodles, setFlowDoodles] = useState(Array.isArray(initialDiagramPayload?.flow_state?.doodles) ? initialDiagramPayload.flow_state.doodles : []);
     const [mindDoodles, setMindDoodles] = useState(Array.isArray(initialDiagramPayload?.mind_state?.doodles) ? initialDiagramPayload.mind_state.doodles : []);
@@ -395,7 +398,7 @@ function DiagramEditorContent() {
 
     useEffect(() => {
         if (editMode) return;
-        drawingRef.current = { start: null, nodeId: null, type: null };
+        drawingRef.current = { start: null, nodeId: null, type: null, previousNodes: null, rawWidth: 0, rawHeight: 0 };
         setIsDrawingShape(false);
         setActiveTool('select');
     }, [editMode]);
@@ -645,9 +648,9 @@ function DiagramEditorContent() {
         const nodeId = drawingRef.current.nodeId;
         const previousNodes = drawingRef.current.previousNodes ?? flowNodes;
         const nextNode = flowNodes.find((entry) => entry.id === nodeId);
-        const width = Number(nextNode?.style?.width ?? 0);
-        const height = Number(nextNode?.style?.height ?? 0);
-        const isTiny = width < 10 || height < 10;
+        const rawWidth = Number(drawingRef.current.rawWidth ?? 0);
+        const rawHeight = Number(drawingRef.current.rawHeight ?? 0);
+        const isTiny = rawWidth < FLOW_DRAW_CANCEL_THRESHOLD && rawHeight < FLOW_DRAW_CANCEL_THRESHOLD;
         const isCancelled = !nextNode || isTiny;
 
         if (isCancelled) {
@@ -658,7 +661,7 @@ function DiagramEditorContent() {
             setSelectedNodeId(nodeId);
         }
 
-        drawingRef.current = { start: null, nodeId: null, type: null, previousNodes: null };
+        drawingRef.current = { start: null, nodeId: null, type: null, previousNodes: null, rawWidth: 0, rawHeight: 0 };
         setIsDrawingShape(false);
     }, [commitFlowState, flowDoodles, flowEdges, flowNodes, isDrawingShape, scheduleCanvasSave]);
 
@@ -675,8 +678,8 @@ function DiagramEditorContent() {
         if (!event.target?.closest?.('.react-flow__pane')) return;
 
         const start = toFlowPoint(event.clientX, event.clientY);
-        const nextNode = createFlowNode(activeTool, start, { width: 60, height: 40 }, toolStyle);
-        drawingRef.current = { start, nodeId: nextNode.id, type: activeTool, previousNodes: flowNodes };
+        const nextNode = createFlowNode(activeTool, start, { width: FLOW_DRAW_MIN_WIDTH, height: FLOW_DRAW_MIN_HEIGHT }, toolStyle);
+        drawingRef.current = { start, nodeId: nextNode.id, type: activeTool, previousNodes: flowNodes, rawWidth: 0, rawHeight: 0 };
         setIsDrawingShape(true);
         setFlowNodes((current) => [...current, nextNode]);
         setSelectedEdgeId(null);
@@ -691,9 +694,12 @@ function DiagramEditorContent() {
         if (!isDrawingShape || !drawingRef.current?.nodeId) return;
         const current = toFlowPoint(event.clientX, event.clientY);
         const start = drawingRef.current.start;
-        const width = Math.max(60, Math.abs(current.x - start.x));
-        const height = Math.max(40, Math.abs(current.y - start.y));
+        const rawWidth = Math.abs(current.x - start.x);
+        const rawHeight = Math.abs(current.y - start.y);
+        const width = Math.max(FLOW_DRAW_MIN_WIDTH, rawWidth);
+        const height = Math.max(FLOW_DRAW_MIN_HEIGHT, rawHeight);
         const topLeft = { x: Math.min(start.x, current.x), y: Math.min(start.y, current.y) };
+        drawingRef.current = { ...drawingRef.current, rawWidth, rawHeight };
 
         setFlowNodes((nodesState) => nodesState.map((node) => (
             node.id === drawingRef.current.nodeId
@@ -703,6 +709,11 @@ function DiagramEditorContent() {
     }, [activeTool, isDrawingShape, isPanning, toFlowPoint]);
 
     const handlePaneMouseUp = useCallback(() => {
+        if (isPanning) setIsPanning(false);
+        finalizeFlowDrawing();
+    }, [finalizeFlowDrawing, isPanning]);
+
+    const handlePaneMouseLeave = useCallback(() => {
         if (isPanning) setIsPanning(false);
         finalizeFlowDrawing();
     }, [finalizeFlowDrawing, isPanning]);
@@ -999,7 +1010,7 @@ function DiagramEditorContent() {
             if (!canEdit) return;
 
             if (event.key === 'Escape') {
-                drawingRef.current = { start: null, nodeId: null, type: null };
+                drawingRef.current = { start: null, nodeId: null, type: null, previousNodes: null, rawWidth: 0, rawHeight: 0 };
                 setIsDrawingShape(false);
                 setActiveTool('select');
                 return;
@@ -1302,12 +1313,69 @@ function DiagramEditorContent() {
         setIsDrawing(false);
     }, [activeTool]);
 
+    const isDrawingTool = useMemo(() => FLOW_DRAW_TOOLS.includes(activeTool), [activeTool]);
+
+    const flowInteractionProps = useMemo(() => {
+        if (!(canEdit && editMode)) {
+            return {
+                panOnDrag: false,
+                nodesDraggable: false,
+                nodesConnectable: false,
+                elementsSelectable: false,
+            };
+        }
+
+        if (activeTool === 'pan') {
+            return {
+                panOnDrag: true,
+                nodesDraggable: false,
+                nodesConnectable: false,
+                elementsSelectable: false,
+            };
+        }
+
+        if (activeTool === 'connector') {
+            return {
+                panOnDrag: false,
+                nodesDraggable: false,
+                nodesConnectable: true,
+                elementsSelectable: true,
+            };
+        }
+
+        if (isDrawingTool) {
+            return {
+                panOnDrag: false,
+                nodesDraggable: false,
+                nodesConnectable: false,
+                elementsSelectable: false,
+            };
+        }
+
+        if (activeTool === 'select') {
+            return {
+                panOnDrag: false,
+                nodesDraggable: true,
+                nodesConnectable: false,
+                elementsSelectable: true,
+            };
+        }
+
+        return {
+            panOnDrag: false,
+            nodesDraggable: false,
+            nodesConnectable: false,
+            elementsSelectable: false,
+        };
+    }, [activeTool, canEdit, editMode, isDrawingTool]);
+
     const cursorClass = useMemo(() => {
         if (editorMode !== 'flow') return 'cursor-default';
         if (activeTool === 'pan') return isPanning ? 'cursor-grabbing' : 'cursor-grab';
-        if (activeTool === 'connector' || FLOW_DRAW_TOOLS.includes(activeTool) || activeTool === 'pen') return 'cursor-crosshair';
+        if (isDrawingTool) return 'cursor-crosshair';
+        if (activeTool === 'connector') return 'cursor-crosshair';
         return 'cursor-default';
-    }, [activeTool, editorMode, isPanning]);
+    }, [activeTool, editorMode, isDrawingTool, isPanning]);
 
     const renderedNodes = useMemo(() => {
         if (editorMode === 'db') return Array.isArray(activeNodes) ? activeNodes : [];
@@ -1603,9 +1671,9 @@ function DiagramEditorContent() {
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            panOnDrag={editorMode === 'db' ? true : activeTool !== 'pen' && activeTool === 'pan'}
-                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : canEdit && editMode && activeTool !== 'pen' && activeTool === 'select'}
-                            elementsSelectable={editorMode === 'db' ? true : ['select', 'connector', 'child', 'topic'].includes(activeTool)}
+                            panOnDrag={editorMode === 'db' ? true : editorMode === 'flow' ? flowInteractionProps.panOnDrag : false}
+                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : editorMode === 'flow' ? flowInteractionProps.nodesDraggable : canEdit && editMode}
+                            elementsSelectable={editorMode === 'db' ? true : editorMode === 'flow' ? flowInteractionProps.elementsSelectable : true}
                             selectionOnDrag={activeTool === 'select'}
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
@@ -1618,7 +1686,7 @@ function DiagramEditorContent() {
                             onPaneMouseMove={editorMode === 'flow' ? handlePaneMouseMove : undefined}
                             onPaneMouseDown={editorMode === 'flow' ? handlePaneMouseDown : undefined}
                             onPaneMouseUp={editorMode === 'flow' ? handlePaneMouseUp : undefined}
-                            onPaneMouseLeave={editorMode === 'flow' ? handlePaneMouseUp : undefined}
+                            onPaneMouseLeave={editorMode === 'flow' ? handlePaneMouseLeave : undefined}
                             onPaneClick={(event) => {
                                 setSelectedEdgeId(null);
                                 setSelectedNodeId(null);
@@ -1644,7 +1712,7 @@ function DiagramEditorContent() {
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={{ type: 'bezier' }}
                             connectionMode={editorMode === 'db' ? 'strict' : (activeTool === 'connector' ? 'loose' : 'strict')}
-                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : canEdit && editMode && activeTool === 'connector'}
+                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : editorMode === 'flow' ? flowInteractionProps.nodesConnectable : false}
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
                             {showMiniMap && <MiniMap position="bottom-right" pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
