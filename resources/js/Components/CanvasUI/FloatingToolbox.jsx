@@ -29,7 +29,7 @@ export default function FloatingToolbox({ mode, activeTool, onSelectTool, showIn
         : mindTools.map((tool) => (tool.key === 'toggle-ink' ? { ...tool, icon: showInk ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash' } : tool));
 
     return (
-        <div className="pointer-events-none absolute left-3 top-1/2 z-30 flex -translate-y-1/2 flex-col gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 shadow-lg">
+        <div className="pointer-events-auto absolute left-3 top-1/2 z-30 flex -translate-y-1/2 flex-col gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 shadow-lg">
             {tools.map((tool) => (
                 <button
                     key={tool.key}
