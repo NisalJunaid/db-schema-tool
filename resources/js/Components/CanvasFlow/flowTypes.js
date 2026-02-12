@@ -12,4 +12,4 @@ export const flowNodeTypes = {
     inkNode: InkNode,
 };
 
-export const flowTools = ['select', 'pan', 'connector', 'rect', 'rounded', 'diamond', 'circle', 'text', 'sticky', 'pen', 'toggle-ink'];
+export const flowTools = ['select', 'pan', 'connector', 'rect', 'rounded', 'circle', 'diamond', 'parallelogram', 'cylinder', 'document', 'cloud', 'star', 'hexagon', 'text', 'sticky', 'pen', 'toggle-ink'];

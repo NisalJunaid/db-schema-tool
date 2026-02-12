@@ -1,10 +1,16 @@
+import { SHAPE_REGISTRY } from '@/Components/CanvasFlow/shapeRegistry';
+
 const byType = {
     rect: 'flowShape',
-    roundRect: 'flowShape',
+    rounded: 'flowShape',
     diamond: 'flowShape',
-    ellipse: 'flowShape',
+    circle: 'flowShape',
     parallelogram: 'flowShape',
     cylinder: 'flowShape',
+    document: 'flowShape',
+    cloud: 'flowShape',
+    star: 'flowShape',
+    hexagon: 'flowShape',
     text: 'flowText',
     sticky: 'flowSticky',
     group: 'flowGroup',
@@ -12,9 +18,11 @@ const byType = {
 
 export function createFlowNode(nodeType, position = { x: 120, y: 120 }, size = null, style = {}) {
     const id = `flow-${crypto.randomUUID()}`;
-    const shapeType = nodeType === 'rectangle' ? 'rect' : nodeType === 'rounded' ? 'roundRect' : nodeType === 'circle' ? 'ellipse' : nodeType;
-    const width = Math.max(80, Math.round(size?.width ?? (shapeType === 'text' ? 140 : 160)));
-    const height = Math.max(40, Math.round(size?.height ?? (shapeType === 'sticky' ? 110 : 90)));
+    const shapeType = nodeType === 'rectangle' ? 'rect' : nodeType;
+    const shapeDefaults = SHAPE_REGISTRY[shapeType]?.defaultSize ?? { width: 160, height: 90 };
+
+    const width = Math.max(80, Math.round(size?.width ?? (shapeType === 'text' ? 140 : shapeDefaults.width)));
+    const height = Math.max(40, Math.round(size?.height ?? (shapeType === 'sticky' ? 110 : shapeDefaults.height)));
 
     const shared = {
         id,
@@ -29,12 +37,15 @@ export function createFlowNode(nodeType, position = { x: 120, y: 120 }, size = n
     return {
         ...shared,
         data: {
-            label: 'Shape',
-            text: 'Shape',
+            label: SHAPE_REGISTRY[shapeType]?.label ?? 'Shape',
+            text: SHAPE_REGISTRY[shapeType]?.label ?? 'Shape',
             shapeType,
             fill: style.fill ?? '#ffffff',
             stroke: style.stroke ?? '#475569',
-            borderStyle: style.borderStyle ?? 'solid',
+            strokeWidth: style.strokeWidth ?? 2,
+            strokeStyle: style.strokeStyle ?? 'solid',
+            opacity: style.opacity ?? 1,
+            shadow: style.shadow ?? false,
             textSize: style.textSize ?? 'md',
             ...style,
         },
