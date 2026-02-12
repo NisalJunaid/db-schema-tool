@@ -3,6 +3,7 @@ import FlowTextNode from './FlowTextNode';
 import FlowStickyNode from './FlowStickyNode';
 import FlowGroupNode from './FlowGroupNode';
 import InkNode from './InkNode';
+import { SHAPE_KEYS } from './shapeRegistry';
 
 export const flowNodeTypes = {
     flowShape: FlowShapeNode,
@@ -12,4 +13,4 @@ export const flowNodeTypes = {
     inkNode: InkNode,
 };
 
-export const flowTools = ['select', 'pan', 'connector', 'rect', 'rounded', 'circle', 'diamond', 'parallelogram', 'cylinder', 'document', 'cloud', 'star', 'hexagon', 'text', 'sticky', 'pen', 'toggle-ink'];
+export const flowTools = ['select', 'pan', 'connector', ...SHAPE_KEYS, 'text', 'sticky', 'pen', 'toggle-ink'];

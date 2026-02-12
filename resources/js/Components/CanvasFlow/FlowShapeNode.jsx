@@ -6,6 +6,27 @@ const textSizeClassMap = {
     lg: 'text-lg',
 };
 
+const textVAlignClassMap = {
+    top: 'items-start',
+    middle: 'items-center',
+    bottom: 'items-end',
+};
+
+const HANDLE_POINTS = [
+    { key: 't-25', side: Position.Top, style: { left: '25%', top: 0, transform: 'translate(-50%, -50%)' } },
+    { key: 't-50', side: Position.Top, style: { left: '50%', top: 0, transform: 'translate(-50%, -50%)' } },
+    { key: 't-75', side: Position.Top, style: { left: '75%', top: 0, transform: 'translate(-50%, -50%)' } },
+    { key: 'r-25', side: Position.Right, style: { right: 0, top: '25%', transform: 'translate(50%, -50%)' } },
+    { key: 'r-50', side: Position.Right, style: { right: 0, top: '50%', transform: 'translate(50%, -50%)' } },
+    { key: 'r-75', side: Position.Right, style: { right: 0, top: '75%', transform: 'translate(50%, -50%)' } },
+    { key: 'b-25', side: Position.Bottom, style: { left: '25%', bottom: 0, transform: 'translate(-50%, 50%)' } },
+    { key: 'b-50', side: Position.Bottom, style: { left: '50%', bottom: 0, transform: 'translate(-50%, 50%)' } },
+    { key: 'b-75', side: Position.Bottom, style: { left: '75%', bottom: 0, transform: 'translate(-50%, 50%)' } },
+    { key: 'l-25', side: Position.Left, style: { left: 0, top: '25%', transform: 'translate(-50%, -50%)' } },
+    { key: 'l-50', side: Position.Left, style: { left: 0, top: '50%', transform: 'translate(-50%, -50%)' } },
+    { key: 'l-75', side: Position.Left, style: { left: 0, top: '75%', transform: 'translate(-50%, -50%)' } },
+];
+
 const toStrokeDashArray = (strokeStyle) => {
     if (strokeStyle === 'dotted') return '2 6';
     if (strokeStyle === 'dashed') return '10 8';
@@ -14,6 +35,8 @@ const toStrokeDashArray = (strokeStyle) => {
 
 const starPoints = '50,4 61,36 95,36 67,56 77,90 50,70 23,90 33,56 5,36 39,36';
 const hexagonPoints = '25,6 75,6 96,50 75,94 25,94 4,50';
+const pentagonPoints = '50,4 95,38 78,94 22,94 5,38';
+const octagonPoints = '30,4 70,4 96,30 96,70 70,96 30,96 4,70 4,30';
 const diamondPoints = '50,4 96,50 50,96 4,50';
 
 function ShapeSvg({ shape, fill, stroke, strokeWidth, strokeStyle, opacity, shadowEnabled, shadowId }) {
@@ -40,6 +63,10 @@ function ShapeSvg({ shape, fill, stroke, strokeWidth, strokeStyle, opacity, shad
                 {shape === 'circle' && <ellipse cx="50" cy="50" rx="47" ry="47" {...commonProps} />}
                 {shape === 'diamond' && <polygon points={diamondPoints} {...commonProps} />}
                 {shape === 'parallelogram' && <polygon points="20,4 98,4 80,96 2,96" {...commonProps} />}
+                {shape === 'trapezoid' && <polygon points="18,4 82,4 98,96 2,96" {...commonProps} />}
+                {shape === 'triangle' && <polygon points="50,4 96,96 4,96" {...commonProps} />}
+                {shape === 'pentagon' && <polygon points={pentagonPoints} {...commonProps} />}
+                {shape === 'octagon' && <polygon points={octagonPoints} {...commonProps} />}
                 {shape === 'cylinder' && (
                     <>
                         <path d="M10 16 C10 9, 90 9, 90 16 L90 84 C90 91, 10 91, 10 84 Z" {...commonProps} />
@@ -55,7 +82,7 @@ function ShapeSvg({ shape, fill, stroke, strokeWidth, strokeStyle, opacity, shad
                 )}
                 {shape === 'star' && <polygon points={starPoints} {...commonProps} />}
                 {shape === 'hexagon' && <polygon points={hexagonPoints} {...commonProps} />}
-                {!['rounded', 'circle', 'diamond', 'parallelogram', 'cylinder', 'document', 'cloud', 'star', 'hexagon'].includes(shape) && (
+                {!['rounded', 'circle', 'diamond', 'parallelogram', 'trapezoid', 'triangle', 'pentagon', 'octagon', 'cylinder', 'document', 'cloud', 'star', 'hexagon'].includes(shape) && (
                     <rect x="2" y="2" width="96" height="96" {...commonProps} />
                 )}
             </g>
@@ -79,10 +106,12 @@ export default function FlowShapeNode({ id, data, selected }) {
                 minHeight={40}
                 onResizeEnd={() => data?.onResizeEnd?.()}
             />
-            <Handle type="target" position={Position.Top} />
-            <Handle type="target" position={Position.Left} />
-            <Handle type="source" position={Position.Right} />
-            <Handle type="source" position={Position.Bottom} />
+            {HANDLE_POINTS.map((handle) => (
+                <Handle key={`target-${handle.key}`} id={`target-${handle.key}`} type="target" position={handle.side} style={handle.style} />
+            ))}
+            {HANDLE_POINTS.map((handle) => (
+                <Handle key={`source-${handle.key}`} id={`source-${handle.key}`} type="source" position={handle.side} style={handle.style} />
+            ))}
             <div className={`relative h-full w-full ${selected ? 'ring-2 ring-indigo-300' : ''}`}>
                 <ShapeSvg
                     shape={shape}
@@ -98,8 +127,7 @@ export default function FlowShapeNode({ id, data, selected }) {
                     contentEditable={data?.editMode}
                     suppressContentEditableWarning
                     onBlur={(event) => updateLabel(event.target.innerText)}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    className={`nodrag nopan absolute inset-0 flex items-center justify-center px-3 text-center text-slate-700 outline-none ${textSizeClassMap[data?.textSize ?? data?.fontSize ?? 'md'] ?? 'text-sm'}`}
+                    className={`nodrag nopan absolute inset-0 flex justify-center px-3 text-center text-slate-700 outline-none ${textVAlignClassMap[data?.textVAlign ?? 'middle'] ?? 'items-center'} ${textSizeClassMap[data?.textSize ?? data?.fontSize ?? 'md'] ?? 'text-sm'}`}
                 >
                     {data?.label ?? data?.text ?? 'Shape'}
                 </div>

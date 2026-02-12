@@ -48,7 +48,13 @@ const FLOW_CONNECTOR_TOOL = 'connector';
 const FLOW_PAN_TOOL = 'pan';
 const FLOW_SELECT_TOOL = 'select';
 const FLOW_PEN_TOOL = 'pen';
-const TOOL_COMPATIBILITY_MAP = { hand: 'pan', arrow: 'connector' };
+const TOOL_COMPATIBILITY_MAP = {
+    hand: 'pan',
+    arrow: 'connector',
+    rectangle: 'rect',
+    roundedRectangle: 'rounded',
+    ellipse: 'circle',
+};
 const FLOW_RESIZE_COMMIT_DELAY = 250;
 
 const normalizeTable = (rawTable) => ({ ...rawTable, columns: asCollection(rawTable.columns ?? rawTable.diagram_columns, 'diagram_columns') });
@@ -199,7 +205,6 @@ function DiagramEditorContent() {
     const isCanvasMode = editorMode === 'flow' || editorMode === 'mind';
     const isFlow = editorMode === 'flow';
     const isPanTool = isFlow && activeTool === FLOW_PAN_TOOL;
-    const isConnectorTool = isFlow && activeTool === FLOW_CONNECTOR_TOOL;
     const isSelectTool = isFlow && activeTool === FLOW_SELECT_TOOL;
     const isPenTool = isCanvasMode && activeTool === FLOW_PEN_TOOL;
 
@@ -764,7 +769,7 @@ function DiagramEditorContent() {
     const onConnect = useCallback((connection) => {
         if (!canEdit || !editMode) return;
 
-        if (editorMode !== 'db' && activeTool !== 'connector') return;
+        if (editorMode === 'mind' && activeTool !== FLOW_CONNECTOR_TOOL) return;
 
         if (editorMode === 'db') {
             const sourceColumnId = parseColumnIdFromHandle(connection.sourceHandle);
@@ -790,7 +795,6 @@ function DiagramEditorContent() {
             const nextEdges = addEdge(nextEdge, flowEdges);
             commitFlowState(flowNodes, nextEdges);
             scheduleCanvasSave('flow', { nodes: flowNodes, edges: nextEdges, doodles: flowDoodles });
-            setActiveTool(FLOW_SELECT_TOOL);
         }
 
         if (editorMode === 'mind') {
@@ -1213,17 +1217,6 @@ function DiagramEditorContent() {
         setSelectedNodeId(clonedNode.id);
     }, [canEdit, commitFlowState, editMode, flowDoodles, flowEdges, flowNodes, scheduleCanvasSave, selectedNodeId]);
 
-    const commentOnSelectedFlowNode = useCallback(() => {
-        if (!selectedNodeId || !canEdit || !editMode) return;
-        const nextNodes = flowNodes.map((node) => (
-            node.id === selectedNodeId
-                ? { ...node, data: { ...node.data, commentCount: (node.data?.commentCount ?? 0) + 1 } }
-                : node
-        ));
-        setFlowNodes(nextNodes);
-        scheduleCanvasSave('flow', { nodes: nextNodes, edges: flowEdges, doodles: flowDoodles });
-    }, [canEdit, editMode, flowDoodles, flowEdges, flowNodes, scheduleCanvasSave, selectedNodeId]);
-
     const addFlowNode = useCallback((nodeType, position = null) => {
         if (!canEdit || !editMode) return;
         const viewport = reactFlowRef.current?.getViewport?.() ?? { x: 0, y: 0, zoom: 1 };
@@ -1371,7 +1364,8 @@ function DiagramEditorContent() {
     );
 
     const handleFlowToolSelect = useCallback((nextTool) => {
-        setActiveTool(nextTool);
+        const normalizedTool = TOOL_COMPATIBILITY_MAP[nextTool] ?? nextTool;
+        setActiveTool(normalizedTool);
         setToolbarMode('default');
         setActiveShape(null);
     }, []);
@@ -1718,7 +1712,6 @@ function DiagramEditorContent() {
                                 onUpdateNode={updateSelectedFlowNode}
                                 onDuplicate={duplicateSelectedFlowNode}
                                 onDelete={deleteSelectedNode}
-                                onComment={commentOnSelectedFlowNode}
                                 onClose={() => setSelectedNodeId(null)}
                             />
                         )}
@@ -1740,9 +1733,9 @@ function DiagramEditorContent() {
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
                             panOnDrag={isFlow ? activeTool === 'pan' : (editorMode === 'mind' ? canEdit && editMode && activeTool === 'pan' : undefined)}
-                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? (isSelectTool && editMode) : canEdit && editMode}
+                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode : canEdit && editMode}
                             elementsSelectable={editorMode === 'db' ? true : isFlow ? true : canEdit && editMode}
-                            selectionOnDrag={editorMode === 'db' ? true : isFlow ? isSelectTool : canEdit && editMode}
+                            selectionOnDrag={editorMode === 'db' ? true : isFlow ? editMode : canEdit && editMode}
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
                             zoomOnScroll
@@ -1799,8 +1792,8 @@ function DiagramEditorContent() {
                             }}
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={{ type: 'bezier' }}
-                            connectionMode={editorMode === 'db' ? 'strict' : (activeTool === 'connector' ? 'loose' : 'strict')}
-                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : isFlow ? isConnectorTool : canEdit && editMode && activeTool === 'connector'}
+                            connectionMode={editorMode === 'db' ? 'strict' : (isFlow ? 'loose' : (activeTool === 'connector' ? 'loose' : 'strict'))}
+                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode : canEdit && editMode && activeTool === 'connector'}
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
                             {showMiniMap && <MiniMap position="bottom-right" pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
