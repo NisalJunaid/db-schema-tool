@@ -48,7 +48,7 @@ export default function FloatingCanvasToolbar({
     const tools = editorMode === 'flow' ? flowTools : mindTools;
 
     return (
-        <div className="pointer-events-none absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-xl bg-white/80 p-2 shadow-xl backdrop-blur">
+        <div className="pointer-events-auto absolute left-4 top-1/2 z-50 -translate-y-1/2 rounded-xl bg-white/80 p-2 shadow-xl backdrop-blur">
             <div className="pointer-events-auto flex flex-col gap-2">
                 {tools.map((tool) => (
                     <ToolButton
