@@ -1,6 +1,6 @@
 const flowTools = [
     { key: 'select', icon: 'fa-solid fa-arrow-pointer', title: 'Select' },
-    { key: 'pan', icon: 'fa-regular fa-hand', title: 'Pan' },
+    { key: 'hand', icon: 'fa-regular fa-hand', title: 'Hand' },
     { key: 'connector', icon: 'fa-solid fa-arrow-right-long', title: 'Connector' },
     { key: 'rect', icon: 'fa-regular fa-square', title: 'Rectangle' },
     { key: 'rounded', icon: 'fa-regular fa-square-full', title: 'Rounded Rectangle' },
@@ -13,15 +13,15 @@ const flowTools = [
 
 const mindTools = [
     { key: 'select', icon: 'fa-solid fa-arrow-pointer', title: 'Select' },
-    { key: 'pan', icon: 'fa-regular fa-hand', title: 'Pan' },
+    { key: 'hand', icon: 'fa-regular fa-hand', title: 'Hand' },
     { key: 'topic', icon: 'fa-solid fa-circle-plus', title: 'Add Topic' },
-    { key: 'child', icon: 'fa-solid fa-diagram-next', title: 'Add Child' },
-    { key: 'sibling', icon: 'fa-solid fa-code-branch', title: 'Add Sibling' },
+    { key: 'child', icon: 'fa-solid fa-diagram-next', title: 'Add Subtopic' },
+    { key: 'connector', icon: 'fa-solid fa-arrow-right-long', title: 'Connector' },
     { key: 'pen', icon: 'fa-solid fa-pen', title: 'Pen' },
     { key: 'toggle-ink', icon: 'fa-solid fa-eye', title: 'Toggle ink' },
 ];
 
-export default function FloatingToolbox({ mode, activeTool, onSelectTool, showInk = true, onToggleInk }) {
+export default function FloatingToolbox({ mode, activeTool, onSelectTool, showInk = true, onToggleInk, editMode = false }) {
     if (!['flow', 'mind'].includes(mode)) return null;
 
     const tools = mode === 'flow'
@@ -29,14 +29,15 @@ export default function FloatingToolbox({ mode, activeTool, onSelectTool, showIn
         : mindTools.map((tool) => (tool.key === 'toggle-ink' ? { ...tool, icon: showInk ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash' } : tool));
 
     return (
-        <div className="absolute left-3 top-1/2 z-30 flex -translate-y-1/2 flex-col gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 shadow-lg">
+        <div className="pointer-events-none absolute left-3 top-1/2 z-30 flex -translate-y-1/2 flex-col gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 shadow-lg">
             {tools.map((tool) => (
                 <button
                     key={tool.key}
                     type="button"
                     title={tool.title}
+                    disabled={!editMode && tool.key !== 'toggle-ink'}
                     onClick={() => (tool.key === 'toggle-ink' ? onToggleInk?.() : onSelectTool?.(tool.key))}
-                    className={`flex h-9 w-9 items-center justify-center rounded-md border ${activeTool === tool.key ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-transparent text-slate-700 hover:bg-slate-100'}`}
+                    className={`pointer-events-auto flex h-9 w-9 items-center justify-center rounded-md border ${activeTool === tool.key ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-transparent text-slate-700 hover:bg-slate-100'} disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                     <i className={tool.icon} />
                 </button>
