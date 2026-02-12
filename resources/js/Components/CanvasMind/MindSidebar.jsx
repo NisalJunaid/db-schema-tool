@@ -34,6 +34,7 @@ export default function MindSidebar({
                 <button type="button" onClick={onToggleCollapse} className="text-xs text-slate-500">Collapse</button>
             </div>
 
+            <p className="mb-3 text-[11px] text-slate-500">Shortcuts: Tab child, Enter sibling, Shift+Tab parent.</p>
             <div className="space-y-2">
                 {!roots.length && <button type="button" onClick={onAddRoot} className="w-full rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700">+ Add root</button>}
                 <button type="button" onClick={onAddChild} disabled={!selectedNode || !editMode} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">+ Add child</button>

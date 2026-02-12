@@ -9,3 +9,5 @@ export const flowNodeTypes = {
     flowSticky: FlowStickyNode,
     flowGroup: FlowGroupNode,
 };
+
+export const flowTools = ['select', 'rect', 'diamond', 'circle', 'text', 'sticky', 'arrow', 'pan'];
