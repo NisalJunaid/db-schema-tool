@@ -30,19 +30,25 @@
 
 .cursor-tool { position: fixed; pointer-events: none; }
 
-.react-flow-wrapper.tool-draw .react-flow__pane,
-.react-flow-wrapper.tool-pen .react-flow__pane {
-    cursor: crosshair !important;
+.flow-canvas.tool-select .react-flow__pane {
+    cursor: default !important;
 }
 
-.react-flow-wrapper.tool-pan .react-flow__pane {
+.flow-canvas.tool-pan .react-flow__pane {
     cursor: grab !important;
 }
 
-.react-flow-wrapper.tool-pan.is-panning .react-flow__pane {
+.flow-canvas.tool-pan.is-panning .react-flow__pane {
     cursor: grabbing !important;
 }
 
-.react-flow-wrapper.tool-select .react-flow__pane {
-    cursor: default !important;
+.flow-canvas.tool-connector .react-flow__pane,
+.flow-canvas.tool-rect .react-flow__pane,
+.flow-canvas.tool-rounded .react-flow__pane,
+.flow-canvas.tool-diamond .react-flow__pane,
+.flow-canvas.tool-circle .react-flow__pane,
+.flow-canvas.tool-text .react-flow__pane,
+.flow-canvas.tool-sticky .react-flow__pane,
+.flow-canvas.tool-pen .react-flow__pane {
+    cursor: crosshair !important;
 }

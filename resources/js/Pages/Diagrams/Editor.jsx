@@ -16,6 +16,7 @@ import RelationshipModal from '@/Components/Diagram/modals/RelationshipModal';
 import ShareAccessModal from '@/Components/Diagrams/ShareAccessModal';
 import EditorErrorBoundary from '@/Components/EditorErrorBoundary';
 import FlowSidebar from '@/Components/CanvasFlow/FlowSidebar';
+import FlowToolbar from '@/Components/CanvasFlow/FlowToolbar';
 import { flowNodeTypes } from '@/Components/CanvasFlow/flowTypes';
 import { createFlowNode } from '@/Components/CanvasFlow/flowDefaults';
 import MindSidebar from '@/Components/CanvasMind/MindSidebar';
@@ -37,6 +38,10 @@ const EXCLUDED_CAPTURE_CLASSES = new Set(['react-flow__controls', 'react-flow__m
 
 const FLOW_DRAG_DRAW_TOOLS = ['rect', 'rounded', 'diamond', 'circle'];
 const FLOW_CLICK_CREATE_TOOLS = ['text', 'sticky'];
+const FLOW_CONNECTOR_TOOL = 'connector';
+const FLOW_PAN_TOOL = 'pan';
+const FLOW_SELECT_TOOL = 'select';
+const FLOW_PEN_TOOL = 'pen';
 const TOOL_COMPATIBILITY_MAP = { hand: 'pan', arrow: 'connector' };
 const FLOW_RESIZE_COMMIT_DELAY = 250;
 const FLOW_DRAW_MIN_WIDTH = 60;
@@ -150,6 +155,7 @@ function DiagramEditorContent() {
     const [allDiagrams, setAllDiagrams] = useState([]);
     const [teams, setTeams] = useState([]);
     const [showShareModal, setShowShareModal] = useState(false);
+    const [isPanningCanvas, setIsPanningCanvas] = useState(false);
 
     const activeHistory = editorMode === 'db' ? history : editorMode === 'flow' ? flowHistory : mindHistory;
     const activeDoodles = editorMode === 'flow' ? flowDoodles : mindDoodles;
@@ -670,6 +676,11 @@ function DiagramEditorContent() {
     const handlePaneMouseDown = useCallback((event) => {
         if (editorMode !== 'flow') return;
 
+        if (isPanTool) {
+            setIsPanningCanvas(true);
+            return;
+        }
+
         if (!(canEdit && editMode) || !reactFlowRef.current) return;
         if (!event.target?.closest?.('.react-flow__pane')) return;
         if (event.target?.closest?.('.react-flow__node, .react-flow__edge, .react-flow__controls, .react-flow__minimap')) return;
@@ -699,7 +710,7 @@ function DiagramEditorContent() {
         setSelectedEdgeId(null);
         setSelectedDoodleId(null);
         event.preventDefault();
-    }, [activeTool, canEdit, commitFlowState, editMode, editorMode, flowDoodles, flowEdges, flowNodes, scheduleCanvasSave, toFlowPoint, toolStyle]);
+    }, [activeTool, canEdit, commitFlowState, editMode, editorMode, flowDoodles, flowEdges, flowNodes, isPanTool, scheduleCanvasSave, toFlowPoint, toolStyle]);
 
     const handlePaneMouseMove = useCallback((event) => {
         if (!isDrawingShape || !drawingRef.current?.nodeId) return;
@@ -720,10 +731,12 @@ function DiagramEditorContent() {
     }, [isDrawingShape, toFlowPoint]);
 
     const handlePaneMouseUp = useCallback(() => {
+        setIsPanningCanvas(false);
         finalizeFlowDrawing();
     }, [finalizeFlowDrawing]);
 
     const handlePaneMouseLeave = useCallback(() => {
+        setIsPanningCanvas(false);
         finalizeFlowDrawing();
     }, [finalizeFlowDrawing]);
 
@@ -815,6 +828,7 @@ function DiagramEditorContent() {
             const nextEdges = addEdge(nextEdge, flowEdges);
             commitFlowState(flowNodes, nextEdges);
             scheduleCanvasSave('flow', { nodes: flowNodes, edges: nextEdges, doodles: flowDoodles });
+            setActiveTool(FLOW_SELECT_TOOL);
         }
 
         if (editorMode === 'mind') {
@@ -1324,21 +1338,25 @@ function DiagramEditorContent() {
 
     const isCanvasMode = editorMode === 'flow' || editorMode === 'mind';
     const isFlow = editorMode === 'flow';
-    const isPenTool = activeTool === 'pen';
-    const isDrawTool = editorMode === 'flow' && (FLOW_DRAG_DRAW_TOOLS.includes(activeTool) || FLOW_CLICK_CREATE_TOOLS.includes(activeTool));
-    const isPanTool = canEdit && editMode && editorMode === 'flow' && activeTool === 'pan';
-    // Keep React Flow interactions tool-aware so draw/pen gestures are not intercepted by pan/drag.
-    const allowSelection = canEdit && editMode && !isDrawTool && !isPenTool;
-    const allowNodeDrag = canEdit && editMode && !isDrawTool && !isPenTool;
-    const allowConnect = canEdit && editMode && activeTool === 'connector';
+    const isDrawTool = isFlow && FLOW_DRAG_DRAW_TOOLS.includes(activeTool);
+    const isClickTool = isFlow && FLOW_CLICK_CREATE_TOOLS.includes(activeTool);
+    const isPanTool = isFlow && activeTool === FLOW_PAN_TOOL;
+    const isConnectorTool = isFlow && activeTool === FLOW_CONNECTOR_TOOL;
+    const isSelectTool = isFlow && activeTool === FLOW_SELECT_TOOL;
+    const isPenTool = isFlow && activeTool === FLOW_PEN_TOOL;
+
+    const getCursor = useCallback(() => {
+        if (!isFlow) return 'default';
+        if (!editMode) return 'default';
+        if (isPanTool) return isPanningCanvas ? 'grabbing' : 'grab';
+        if (isConnectorTool || isDrawTool || isClickTool || isPenTool) return 'crosshair';
+        return 'default';
+    }, [editMode, isClickTool, isConnectorTool, isDrawTool, isFlow, isPanTool, isPenTool, isPanningCanvas]);
 
     const canvasCursor = useMemo(() => {
-        if (!editMode) return 'tool-select';
-        if (activeTool === 'pan') return 'tool-pan';
-        if (activeTool === 'pen') return 'tool-pen';
-        if (isDrawTool || activeTool === 'connector') return 'tool-draw';
-        return 'tool-select';
-    }, [activeTool, editMode, isDrawTool]);
+        if (!isFlow) return '';
+        return isPanningCanvas ? `tool-${activeTool} is-panning` : `tool-${activeTool}`;
+    }, [activeTool, isFlow, isPanningCanvas]);
 
     const doodleEnabled = canEdit && editMode && showInk && isCanvasMode && activeTool === 'pen';
 
@@ -1621,26 +1639,40 @@ function DiagramEditorContent() {
                         </div>
                     )}
 
-                    <div className={`react-flow-wrapper relative m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${canvasCursor}`}>
+                    <div
+                        className={`react-flow-wrapper flow-canvas relative m-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${canvasCursor}`}
+                        style={isFlow ? { cursor: getCursor() } : undefined}
+                    >
 
-                        <FloatingToolbox
-                            mode={editorMode}
-                            activeTool={activeTool}
-                            onSelectTool={setActiveTool}
-                            showInk={showInk}
-                            onToggleInk={() => setShowInk((current) => !current)}
-                            editMode={canEdit && editMode}
-                        />
+                        {editorMode === 'flow' && (
+                            <FlowToolbar
+                                activeTool={activeTool}
+                                onSelectTool={setActiveTool}
+                                editMode={canEdit && editMode}
+                                showInk={showInk}
+                                onToggleInk={() => setShowInk((current) => !current)}
+                            />
+                        )}
+                        {editorMode === 'mind' && (
+                            <FloatingToolbox
+                                mode="mind"
+                                activeTool={activeTool}
+                                onSelectTool={setActiveTool}
+                                showInk={showInk}
+                                onToggleInk={() => setShowInk((current) => !current)}
+                                editMode={canEdit && editMode}
+                            />
+                        )}
                         <ReactFlow
                             nodes={Array.isArray(renderedNodes) ? renderedNodes : []}
                             edges={Array.isArray(activeEdges) ? activeEdges : []}
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            panOnDrag={isPanTool}
-                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : isCanvasMode ? allowNodeDrag : canEdit && editMode}
-                            elementsSelectable={editorMode === 'db' ? true : isCanvasMode ? allowSelection : true}
-                            selectionOnDrag={editorMode === 'db' ? true : isCanvasMode ? allowSelection : false}
+                            panOnDrag={isFlow ? isPanTool : editorMode === 'mind' ? canEdit && editMode && activeTool === 'pan' : undefined}
+                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode && isSelectTool : canEdit && editMode}
+                            elementsSelectable={editorMode === 'db' ? true : isFlow ? (isSelectTool || isConnectorTool) : canEdit && editMode}
+                            selectionOnDrag={editorMode === 'db' ? true : isFlow ? isSelectTool : canEdit && editMode}
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
                             zoomOnScroll
@@ -1682,7 +1714,7 @@ function DiagramEditorContent() {
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={{ type: 'bezier' }}
                             connectionMode={editorMode === 'db' ? 'strict' : (activeTool === 'connector' ? 'loose' : 'strict')}
-                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : isCanvasMode ? allowConnect : false}
+                            nodesConnectable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode && isConnectorTool : canEdit && editMode && activeTool === 'connector'}
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
                             {showMiniMap && <MiniMap position="bottom-right" pannable zoomable nodeColor={miniMapNodeColor} nodeStrokeColor={miniMapNodeStrokeColor} />}
