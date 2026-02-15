@@ -129,7 +129,7 @@ function DiagramEditorContent() {
     const [selectedEdgeId, setSelectedEdgeId] = useState(null);
     const [showMiniMap, setShowMiniMap] = useState(true);
     const [showGrid, setShowGrid] = useState(true);
-    const [activeTool, setActiveTool] = useState('select');
+    const [activeTool, setActiveTool] = useState(FLOW_PAN_TOOL);
     const [toolbarMode, setToolbarMode] = useState('default');
     const [activeShape, setActiveShape] = useState(null);
     const [toolStyle, setToolStyle] = useState({ fill: '#ffffff', stroke: '#475569', borderStyle: 'solid', textSize: 'md' });
@@ -213,7 +213,7 @@ function DiagramEditorContent() {
 
     const isCanvasMode = editorMode === 'flow' || editorMode === 'mind';
     const isFlow = editorMode === 'flow';
-    const isPanTool = isFlow && activeTool === FLOW_PAN_TOOL;
+    const isPanTool = isCanvasMode && activeTool === FLOW_PAN_TOOL;
     const isSelectTool = isFlow && activeTool === FLOW_SELECT_TOOL;
     const isPenTool = isCanvasMode && activeTool === FLOW_PEN_TOOL;
     const isConnectorTool = isFlow && activeTool === FLOW_CONNECTOR_TOOL;
@@ -438,13 +438,13 @@ function DiagramEditorContent() {
 
     useEffect(() => {
         if (editorMode === 'db') return;
-        setActiveTool('select');
+        setActiveTool(FLOW_PAN_TOOL);
     }, [editorMode]);
 
 
     useEffect(() => {
         if (editMode) return;
-        setActiveTool('select');
+        setActiveTool(FLOW_PAN_TOOL);
     }, [editMode]);
     useEffect(() => () => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
@@ -641,20 +641,28 @@ function DiagramEditorContent() {
     const decoratedFlowNodes = useMemo(() => {
         if (!isFlow) return flowNodes;
 
-        const connectable = Boolean(editMode && isConnectorTool);
+        const showAllHandles = Boolean(editMode && isConnectorTool);
+        const selectedId = selectedNodeId ? String(selectedNodeId) : null;
 
-        return flowNodes.map((node) => ({
-            ...node,
-            data: {
-                ...(node.data ?? {}),
-                editMode,
-                connectable,
-                showHandlesAll: connectable,
-                showHoverHandles: Boolean(connectable && isConnecting && hoverTargetNodeId && node.id === hoverTargetNodeId),
-            },
-            selectable: true,
-        }));
-    }, [editMode, flowNodes, hoverTargetNodeId, isConnecting, isConnectorTool, isFlow]);
+        return flowNodes.map((node) => {
+            const isSelected = selectedId === String(node.id);
+            const isHoverTarget = Boolean(isConnecting && hoverTargetNodeId && node.id === hoverTargetNodeId);
+
+            return {
+                ...node,
+                data: {
+                    ...(node.data ?? {}),
+                    editMode,
+                    // Historically we only allowed connect starts in connector mode,
+                    // which blocked dragging from selected-node handles and dropping onto hovered targets.
+                    connectable: Boolean(editMode && (showAllHandles || isSelected || isHoverTarget)),
+                    showHandlesAll: showAllHandles,
+                    showHoverHandles: Boolean(editMode && isHoverTarget),
+                },
+                selectable: true,
+            };
+        });
+    }, [editMode, flowNodes, hoverTargetNodeId, isConnecting, isConnectorTool, isFlow, selectedNodeId]);
 
     const activeNodes = useMemo(() => {
         if (editorMode === 'db') return nodes;
@@ -706,12 +714,12 @@ function DiagramEditorContent() {
     }, []);
 
     const handlePaneMouseDown = useCallback(() => {
-        if (editorMode !== 'flow') return;
+        if (!isCanvasMode) return;
 
-        if (isPanTool) {
+        if (isPanTool || !editMode) {
             setIsPanningCanvas(true);
         }
-    }, [editorMode, isPanTool]);
+    }, [editMode, isCanvasMode, isPanTool]);
 
     const handlePaneMouseUp = useCallback(() => {
         setIsPanningCanvas(false);
@@ -811,7 +819,8 @@ function DiagramEditorContent() {
         }
 
         if (editorMode === 'flow') {
-            if (!(isConnectorTool || isConnecting)) return;
+            // We should accept connections from any visible/connectable handle,
+            // not only from the explicit connector tool.
             const nextEdges = addEdge({
                 ...connection,
                 ...FLOW_EDGE_DEFAULTS,
@@ -834,13 +843,13 @@ function DiagramEditorContent() {
             commitMindState(mindNodes, nextEdges);
             scheduleCanvasSave('mind', { nodes: mindNodes, edges: nextEdges, doodles: mindDoodles });
         }
-    }, [activeTool, canEdit, commitFlowState, commitMindState, editMode, editorMode, flowDoodles, flowEdges, flowNodes, isConnecting, isConnectorTool, mindDoodles, mindEdges, mindNodes, relationships, scheduleCanvasSave]);
+    }, [activeTool, canEdit, commitFlowState, commitMindState, editMode, editorMode, flowDoodles, flowEdges, flowNodes, mindDoodles, mindEdges, mindNodes, relationships, scheduleCanvasSave]);
 
     const onFlowConnectStart = useCallback(() => {
-        if (!(isFlow && editMode && isConnectorTool)) return;
+        if (!(isFlow && editMode)) return;
         setIsConnecting(true);
         setHoverTargetNodeId(null);
-    }, [editMode, isConnectorTool, isFlow]);
+    }, [editMode, isFlow]);
 
     const onFlowConnectEnd = useCallback(() => {
         setIsConnecting(false);
@@ -1397,8 +1406,7 @@ function DiagramEditorContent() {
     }, [activeTool]);
     const getCursor = useCallback(() => {
         if (!isCanvasMode) return 'default';
-        if (!editMode) return 'default';
-        if (isPanTool) return isPanningCanvas ? 'grabbing' : 'grab';
+        if (isPanTool || !editMode) return isPanningCanvas ? 'grabbing' : 'grab';
         if (isFlow && FLOW_CLICK_CREATE_TOOLS.includes(activeTool)) return activeTool === 'text' ? 'text' : 'crosshair';
         if (isPenTool) return 'crosshair';
         return 'default';
@@ -1788,10 +1796,11 @@ function DiagramEditorContent() {
                             nodeTypes={nodeTypes}
                             fitView
                             onInit={(instance) => { reactFlowRef.current = instance; }}
-                            panOnDrag={isPanTool}
-                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode && !isPanTool && !isPenTool && !isConnectorTool : canEdit && editMode}
+                            panOnDrag={editorMode === 'flow' ? (isPanTool || !editMode) : true}
+                            panOnScroll
+                            nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode && !isPanTool && !isPenTool : canEdit && editMode}
                             elementsSelectable={true}
-                            selectionOnDrag={editorMode === 'db' ? true : isFlow ? editMode : canEdit && editMode}
+                            selectionOnDrag={editorMode === 'db' ? false : isFlow ? editMode && !isPanTool : canEdit && editMode}
                             snapToGrid={editorMode !== 'db'}
                             snapGrid={[15, 15]}
                             zoomOnScroll
@@ -1808,10 +1817,10 @@ function DiagramEditorContent() {
                             onNodeClick={onNodeClick}
                             onEdgeClick={onEdgeClick}
                             onEdgeDoubleClick={onEdgeDoubleClick}
-                            onPaneMouseDown={editorMode === 'flow' ? handlePaneMouseDown : undefined}
+                            onPaneMouseDown={isCanvasMode ? handlePaneMouseDown : undefined}
                             onPaneMouseMove={editorMode === 'flow' ? handlePaneMouseMove : undefined}
-                            onPaneMouseUp={editorMode === 'flow' ? handlePaneMouseUp : undefined}
-                            onPaneMouseLeave={editorMode === 'flow' ? handlePaneMouseLeave : undefined}
+                            onPaneMouseUp={isCanvasMode ? handlePaneMouseUp : undefined}
+                            onPaneMouseLeave={isCanvasMode ? handlePaneMouseLeave : undefined}
                             onPaneClick={(event) => {
                                 setSelectedEdgeId(null);
                                 setSelectedNodeId(null);
@@ -1853,7 +1862,7 @@ function DiagramEditorContent() {
                             proOptions={{ hideAttribution: true }}
                             defaultEdgeOptions={editorMode === 'flow' ? FLOW_EDGE_DEFAULTS : { type: 'bezier' }}
                             connectionMode={editorMode === 'db' ? 'strict' : (isFlow ? 'loose' : (activeTool === 'connector' ? 'loose' : 'strict'))}
-                            nodesConnectable={editorMode === 'flow' ? editMode && isConnectorTool : editMode}
+                            nodesConnectable={editMode}
                             edgesConnectable={editMode}
                         >
                             {showGrid && <Background gap={20} size={1} color="#cbd5e1" />}
