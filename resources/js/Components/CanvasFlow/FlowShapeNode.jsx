@@ -13,10 +13,10 @@ const textVAlignClassMap = {
 };
 
 const HANDLE_POINTS = [
-    { id: 'target-top', type: 'target', side: Position.Top, style: { left: '50%', transform: 'translateX(-50%)' } },
-    { id: 'source-right', type: 'source', side: Position.Right, style: { top: '50%', transform: 'translateY(-50%)' } },
-    { id: 'source-bottom', type: 'source', side: Position.Bottom, style: { left: '50%', transform: 'translateX(-50%)' } },
-    { id: 'target-left', type: 'target', side: Position.Left, style: { top: '50%', transform: 'translateY(-50%)' } },
+    { id: 'top', type: 'source', side: Position.Top, style: { left: '50%', transform: 'translateX(-50%)' } },
+    { id: 'right', type: 'source', side: Position.Right, style: { top: '50%', transform: 'translateY(-50%)' } },
+    { id: 'bottom', type: 'source', side: Position.Bottom, style: { left: '50%', transform: 'translateX(-50%)' } },
+    { id: 'left', type: 'source', side: Position.Left, style: { top: '50%', transform: 'translateY(-50%)' } },
 ];
 
 const toStrokeDashArray = (strokeStyle) => {
