@@ -20,15 +20,39 @@ class DiagramTransferController extends Controller
     {
         $this->authorize('update', $diagram);
 
-        $validated = $request->validate([
-            'sql' => ['nullable', 'string'],
-            'tables' => ['nullable', 'array'],
-            'relationships' => ['nullable', 'array'],
-        ]);
+        $type = $request->input('type');
 
-        $payload = array_key_exists('sql', $validated) && filled($validated['sql'])
-            ? $this->parseSqlImportPayload($validated['sql'])
-            : $this->normalizeJsonImportPayload($request);
+        if ($type === 'sql') {
+            $validated = $request->validate([
+                'content' => ['required', 'string'],
+            ]);
+
+            $payload = $this->parseSqlImportPayload($validated['content']);
+        } elseif ($type === 'json') {
+            $validated = $request->validate([
+                'content' => ['required', 'string'],
+            ]);
+
+            $decoded = json_decode($validated['content'], true);
+
+            if (! is_array($decoded)) {
+                return response()->json([
+                    'message' => 'The given data was invalid.',
+                    'errors' => [
+                        'content' => ['JSON content must be a valid object.'],
+                    ],
+                ], 422);
+            }
+
+            $payload = $this->normalizeJsonImportPayload($decoded);
+        } else {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => [
+                    'type' => ['Type must be sql or json.'],
+                ],
+            ], 422);
+        }
 
         DB::transaction(function () use ($diagram, $payload): void {
             $diagram->diagramRelationships()->delete();
@@ -99,9 +123,9 @@ class DiagramTransferController extends Controller
         return response()->json($diagram->fresh(['diagramTables.diagramColumns', 'diagramRelationships']));
     }
 
-    private function normalizeJsonImportPayload(Request $request): array
+    private function normalizeJsonImportPayload(array $payload): array
     {
-        return $request->validate([
+        validator($payload, [
             'tables' => ['required', 'array'],
             'tables.*.name' => ['required', 'string', 'max:255'],
             'tables.*.schema' => ['nullable', 'string', 'max:255'],
@@ -118,7 +142,9 @@ class DiagramTransferController extends Controller
             'tables.*.columns.*.unique' => ['nullable', 'boolean'],
             'tables.*.columns.*.default' => ['nullable', 'string', 'max:255'],
             'relationships' => ['nullable', 'array'],
-        ]);
+        ])->validate();
+
+        return $payload;
     }
 
     private function parseSqlImportPayload(string $sql): array
