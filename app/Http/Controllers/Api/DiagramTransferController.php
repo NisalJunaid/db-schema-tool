@@ -71,6 +71,7 @@ class DiagramTransferController extends Controller
             $diagram->databases()->delete();
 
             $palette = ['#6366f1', '#0ea5e9', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e'];
+            $usedTableColors = [];
             $createdTables = [];
             $databaseMap = [];
 
@@ -85,12 +86,18 @@ class DiagramTransferController extends Controller
                     );
                 }
 
+                $tableColor = trim((string) ($tableRow['color'] ?? ''));
+                if ($tableColor === '') {
+                    $tableColor = $palette[count($usedTableColors) % count($palette)];
+                }
+                $usedTableColors[] = $tableColor;
+
                 $table = DiagramTable::create([
                     'diagram_id' => $diagram->getKey(),
                     'database_id' => $databaseMap[$databaseKey]->id,
                     'name' => $tableRow['name'],
                     'schema' => $tableRow['schema'] ?? null,
-                    'color' => $tableRow['color'] ?? null,
+                    'color' => $tableColor,
                     'x' => 0,
                     'y' => 0,
                     'w' => 320,
@@ -126,20 +133,23 @@ class DiagramTransferController extends Controller
 
             foreach ($databaseMap as $database) {
                 $tablesForDatabase = $databaseTables[$database->id] ?? [];
-                $columnsPerRow = (int) ceil(sqrt(max(count($tablesForDatabase), 1)));
-                $row = 0;
-                $col = 0;
+                $columnsPerRow = 4;
+                $cellW = 380;
+                $cellH = 260;
+                $startX = (int) $database->x + 40;
+                $startY = (int) $database->y + 80;
                 $minX = PHP_INT_MAX;
                 $minY = PHP_INT_MAX;
                 $maxX = 0;
                 $maxY = 0;
 
                 foreach ($tablesForDatabase as $index => $table) {
-                    $x = (int) $database->x + 80 + ($col * 380);
-                    $y = (int) $database->y + 90 + ($row * 260);
+                    $row = (int) floor($index / $columnsPerRow);
+                    $col = $index % $columnsPerRow;
+                    $x = $startX + ($col * $cellW);
+                    $y = $startY + ($row * $cellH);
 
                     $table->update([
-                        'color' => $table->color,
                         'x' => $x,
                         'y' => $y,
                         'w' => 320,
@@ -150,45 +160,47 @@ class DiagramTransferController extends Controller
                     $minY = min($minY, $y);
                     $maxX = max($maxX, $x + 320);
                     $maxY = max($maxY, $y + 200);
-
-                    $col++;
-                    if ($col >= $columnsPerRow) {
-                        $col = 0;
-                        $row++;
-                    }
                 }
 
                 if ($tablesForDatabase) {
                     $database->update([
-                        'x' => max(0, $minX - 60),
-                        'y' => max(0, $minY - 60),
+                        'x' => max(0, $minX - 40),
+                        'y' => max(0, $minY - 70),
                         'width' => max(600, $maxX - $minX + 120),
-                        'height' => max(420, $maxY - $minY + 120),
+                        'height' => max(420, $maxY - $minY + 150),
                     ]);
                 }
             }
 
             $foreignKeys = $payload['relationships'] ?? [];
             $columnLookup = [];
+            $columnModels = [];
             foreach ($diagram->diagramTables()->with('diagramColumns')->get() as $table) {
                 foreach ($table->diagramColumns as $column) {
-                    $columnLookup[Str::lower($table->name).'.'.Str::lower($column->name)] = $column->getKey();
+                    $lookupKey = Str::lower($table->name).'.'.Str::lower($column->name);
+                    $columnLookup[$lookupKey] = $column->getKey();
+                    $columnModels[$column->getKey()] = $column;
                 }
             }
 
+            $relationshipWarnings = [];
+
             foreach ($foreignKeys as $fk) {
-                $fromKey = Str::lower(($fk['from_table'] ?? '')).'.'.Str::lower($fk['from_column'] ?? '');
-                $toKey = Str::lower(($fk['to_table'] ?? '')).'.'.Str::lower($fk['to_column'] ?? '');
+                $fromKey = Str::lower(($fk['from_table'] ?? '')).'.'.Str::lower(($fk['from_column'] ?? ''));
+                $toKey = Str::lower(($fk['to_table'] ?? '')).'.'.Str::lower(($fk['to_column'] ?? ''));
 
                 if (! isset($columnLookup[$fromKey]) || ! isset($columnLookup[$toKey])) {
+                    $relationshipWarnings[] = [
+                        'from' => $fromKey,
+                        'to' => $toKey,
+                    ];
                     continue;
                 }
 
                 $fromColumnId = $columnLookup[$fromKey];
                 $toColumnId = $columnLookup[$toKey];
 
-                $fromColumn = DiagramColumn::query()->find($fromColumnId);
-
+                $fromColumn = $columnModels[$fromColumnId] ?? null;
                 $type = $fromColumn?->primary || $fromColumn?->unique
                     ? 'one_to_one'
                     : 'one_to_many';
@@ -208,6 +220,8 @@ class DiagramTransferController extends Controller
             logger()->info('Diagram import relationships saved', [
                 'diagram_id' => $diagram->id,
                 'relationships' => $createdRelationshipCount,
+                'skipped_relationships' => count($relationshipWarnings),
+                'warnings' => $relationshipWarnings,
             ]);
         });
 

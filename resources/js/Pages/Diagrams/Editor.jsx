@@ -620,6 +620,25 @@ function DiagramEditorContent() {
         setDatabases((current) => current.map((entry) => Number(entry.id) === Number(databaseId) ? updated : entry));
     }, [canEdit, editMode]);
 
+    const onResizeDatabaseGroup = useCallback(async (databaseId, nextSize) => {
+        if (!(canEdit && editMode)) return;
+
+        const width = Math.max(200, Math.round(Number(nextSize?.width ?? 1200)));
+        const height = Math.max(200, Math.round(Number(nextSize?.height ?? 800)));
+
+        setDatabases((current) => current.map((database) => (
+            Number(database.id) === Number(databaseId)
+                ? { ...database, width, height }
+                : database
+        )));
+
+        try {
+            await api.patch(`/api/v1/diagram-databases/${databaseId}`, { width, height });
+        } catch {
+            // ignore and rely on next reload to resync
+        }
+    }, [canEdit, editMode]);
+
     const onAddColumn = useCallback((tableId) => { setFormErrors({}); setColumnModalMode('create'); setEditingColumn(null); setAddColumnForm({ ...defaultColumnForm, tableId: String(tableId) }); setShowAddColumnModal(true); }, []);
     const onEditColumn = useCallback((column) => { setFormErrors({}); setColumnModalMode('edit'); setEditingColumn(column); setAddColumnForm({ ...defaultColumnForm, tableId: String(column.diagram_table_id), name: column.name, type: column.type, enum_values: column.enum_values ?? [], length: column.length ?? 255, precision: column.precision ?? 10, scale: column.scale ?? 2, unsigned: Boolean(column.unsigned), auto_increment: Boolean(column.auto_increment), nullable: Boolean(column.nullable), primary: Boolean(column.primary), unique: Boolean(column.unique), index_type: column.index_type ?? '', default: column.default ?? '', collation: column.collation ?? '' }); setShowAddColumnModal(true); }, []);
 
@@ -681,6 +700,8 @@ function DiagramEditorContent() {
                 color: database.color || '#64748b',
                 width: Number(database.width ?? 1200),
                 height: Number(database.height ?? 800),
+                canResize: Boolean(canEdit && editMode),
+                onResizeEnd: (nextSize) => onResizeDatabaseGroup(database.id, nextSize),
             },
             style: { zIndex: 0 },
         }));
@@ -710,7 +731,7 @@ function DiagramEditorContent() {
         }).filter(Boolean);
 
         setNodes([...(editorMode === 'db' ? groupNodes : []), ...tableNodes]);
-    }, [tables, databases, editMode, selectedColumnId, buildNodeData, selectedNodeId, editorMode]);
+    }, [tables, databases, editMode, selectedColumnId, buildNodeData, selectedNodeId, editorMode, canEdit, onResizeDatabaseGroup]);
 
     const relationshipLabel = useCallback((type, onDelete = null) => {
         let label = type === 'one_to_one' ? '1:1' : '1:N';
@@ -1712,6 +1733,7 @@ function DiagramEditorContent() {
     const handleImportSuccess = async (importedDiagramPayload = null) => {
         setSavingState('Saving...');
         const reloadedDiagram = await loadDiagram();
+        reactFlowRef.current?.fitView?.({ padding: 0.2, duration: 0 });
         setSavingState('Saved');
 
         const importedRelationshipCount = Array.isArray(importedDiagramPayload?.diagram_relationships)
