@@ -63,8 +63,6 @@ class DiagramTransferController extends Controller
 
             $palette = ['#6366f1', '#0ea5e9', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e'];
             $createdTables = [];
-            $columnMap = [];
-            $columnIndexMap = [];
 
             foreach ($payload['tables'] as $tableRow) {
                 $table = DiagramTable::create([
@@ -98,8 +96,6 @@ class DiagramTransferController extends Controller
                         'index_type' => $columnRow['index_type'] ?? null,
                     ]);
 
-                    $columnMap[Str::lower($table->name.'.'.$column->name)] = $column->getKey();
-                    $columnIndexMap[$column->getKey()] = $column;
                 }
             }
 
@@ -129,18 +125,28 @@ class DiagramTransferController extends Controller
                 }
             }
 
-            foreach ($payload['relationships'] ?? [] as $relationshipRow) {
-                $fromColumnId = $columnMap[Str::lower(($relationshipRow['from_table'] ?? '').'.'.($relationshipRow['from_column'] ?? ''))] ?? null;
-                $toColumnId = $columnMap[Str::lower(($relationshipRow['to_table'] ?? '').'.'.($relationshipRow['to_column'] ?? ''))] ?? null;
+            $foreignKeys = $payload['relationships'] ?? [];
+            $columnLookup = [];
+            foreach ($diagram->diagramTables()->with('diagramColumns')->get() as $table) {
+                foreach ($table->diagramColumns as $column) {
+                    $columnLookup[Str::lower($table->name).'.'.Str::lower($column->name)] = $column->getKey();
+                }
+            }
 
-                if (! $fromColumnId || ! $toColumnId) {
+            foreach ($foreignKeys as $fk) {
+                $fromKey = Str::lower(($fk['from_table'] ?? '')).'.'.Str::lower($fk['from_column'] ?? '');
+                $toKey = Str::lower(($fk['to_table'] ?? '')).'.'.Str::lower($fk['to_column'] ?? '');
+
+                if (! isset($columnLookup[$fromKey]) || ! isset($columnLookup[$toKey])) {
                     continue;
                 }
 
-                $fromColumn = $columnIndexMap[$fromColumnId] ?? DiagramColumn::query()->find($fromColumnId);
-                $type = in_array($fromColumn?->index_type, ['unique', 'primary'], true)
-                    || $fromColumn?->unique
-                    || $fromColumn?->primary
+                $fromColumnId = $columnLookup[$fromKey];
+                $toColumnId = $columnLookup[$toKey];
+
+                $fromColumn = DiagramColumn::query()->find($fromColumnId);
+
+                $type = $fromColumn?->primary || $fromColumn?->unique
                     ? 'one_to_one'
                     : 'one_to_many';
 
@@ -149,8 +155,8 @@ class DiagramTransferController extends Controller
                     'from_column_id' => $fromColumnId,
                     'to_column_id' => $toColumnId,
                     'type' => $type,
-                    'on_delete' => $relationshipRow['on_delete'] ?? null,
-                    'on_update' => $relationshipRow['on_update'] ?? null,
+                    'on_delete' => $fk['on_delete'] ?? null,
+                    'on_update' => $fk['on_update'] ?? null,
                 ]);
             }
         });
