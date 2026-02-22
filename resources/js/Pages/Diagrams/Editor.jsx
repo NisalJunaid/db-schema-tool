@@ -463,8 +463,6 @@ function DiagramEditorContent() {
         const instance = reactFlowRef.current;
         if (!instance) return;
 
-        instance.fitView({ padding: 0.2 });
-
         await new Promise((resolve) => setTimeout(resolve, 300));
 
         const el = document.querySelector('.react-flow');
@@ -1547,7 +1545,7 @@ function DiagramEditorContent() {
     const focusOnTable = useCallback((tableId) => {
         const node = nodes.find((entry) => entry.id === String(tableId));
         if (!node) return;
-        reactFlowRef.current?.setCenter(node.position.x + 160, node.position.y + 100, { zoom: 1.1, duration: 500 });
+        setSelectedNodeId(node.id);
     }, [nodes]);
 
     const handleImportSuccess = async (importedDiagramPayload = null) => {
@@ -1725,8 +1723,6 @@ function DiagramEditorContent() {
                         onUpdateNode={updateFlowNodeData}
                         onFocusNode={(nodeId) => {
                             setSelectedNodeId(nodeId);
-                            const node = flowNodes.find((entry) => entry.id === nodeId);
-                            if (node) reactFlowRef.current?.setCenter(node.position.x, node.position.y, { zoom: 1.1, duration: 350 });
                         }}
                         nodes={flowNodes}
                         editMode={canEdit && editMode}
@@ -1744,8 +1740,6 @@ function DiagramEditorContent() {
                         onUpdateNode={updateMindNodeData}
                         onFocusNode={(nodeId) => {
                             setSelectedNodeId(nodeId);
-                            const node = mindNodes.find((entry) => entry.id === nodeId);
-                            if (node) reactFlowRef.current?.setCenter(node.position.x, node.position.y, { zoom: 1.1, duration: 350 });
                         }}
                         editMode={canEdit && editMode}
                     />
@@ -1838,10 +1832,11 @@ function DiagramEditorContent() {
                             nodes={Array.isArray(nodesForRender) ? nodesForRender : []}
                             edges={Array.isArray(activeEdges) ? activeEdges : []}
                             nodeTypes={nodeTypes}
-                            fitView
+                            minZoom={0.1}
+                            maxZoom={4}
                             onInit={(instance) => { reactFlowRef.current = instance; }}
                             panOnDrag={editorMode === 'flow' ? (isPanTool || !editMode) : true}
-                            panOnScroll
+                            panOnScroll={false}
                             nodesDraggable={editorMode === 'db' ? canEdit && editMode : isFlow ? editMode && !isPanTool && !isPenTool : canEdit && editMode}
                             elementsSelectable={true}
                             selectionOnDrag={editorMode === 'db' ? false : isFlow ? editMode && !isPanTool : canEdit && editMode}
