@@ -1,4 +1,4 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import InputError from '@/Components/InputError';
 import PrimaryButton from '@/Components/PrimaryButton';
 import TextInput from '@/Components/TextInput';
@@ -6,10 +6,12 @@ import GuestLayout from '@/Layouts/GuestLayout';
 import AppLogo from '@/Components/AppLogo';
 
 export default function Login() {
+    const redirect = usePage().props?.redirect ?? '';
     const { data, setData, post, processing, errors } = useForm({
         email: '',
         password: '',
         remember: false,
+        redirect,
     });
 
     const submit = (e) => {

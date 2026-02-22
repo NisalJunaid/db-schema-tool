@@ -72,6 +72,11 @@ class Diagram extends Model
         return $this->hasMany(DiagramAccess::class);
     }
 
+    public function shareLinks(): HasMany
+    {
+        return $this->hasMany(DiagramShareLink::class);
+    }
+
     public function getPreviewUrlAttribute(): ?string
     {
         if (! $this->preview_path) {
