@@ -5,6 +5,7 @@ export default function ImportModal({ open, onClose, diagramId, onImported }) {
     const [mode, setMode] = useState('sql');
     const [sqlText, setSqlText] = useState('');
     const [jsonText, setJsonText] = useState('');
+    const [replaceExisting, setReplaceExisting] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
 
@@ -35,12 +36,14 @@ export default function ImportModal({ open, onClose, diagramId, onImported }) {
             const importResponse = await api.post(`/api/v1/diagrams/${diagramId}/import`, {
                 type,
                 content,
+                replace: replaceExisting,
             });
 
             await onImported?.(importResponse?.data ?? importResponse);
             onClose();
             setSqlText('');
             setJsonText('');
+            setReplaceExisting(false);
         } catch (importError) {
             setError(importError?.message || 'Unable to import diagram content.');
         } finally {
@@ -103,6 +106,17 @@ export default function ImportModal({ open, onClose, diagramId, onImported }) {
                         </div>
                     </div>
                 )}
+
+                <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                        type="checkbox"
+                        checked={replaceExisting}
+                        onChange={(event) => setReplaceExisting(event.target.checked)}
+                        disabled={submitting}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Replace existing diagram
+                </label>
 
                 {mode === 'json' && (
                     <div className="mt-4 space-y-3">

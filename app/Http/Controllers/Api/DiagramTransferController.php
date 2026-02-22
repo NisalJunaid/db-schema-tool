@@ -22,16 +22,19 @@ class DiagramTransferController extends Controller
         $this->authorize('update', $diagram);
 
         $type = $request->input('type');
+        $replace = $request->boolean('replace', false);
 
         if ($type === 'sql') {
             $validated = $request->validate([
                 'content' => ['required', 'string'],
+                'replace' => ['nullable', 'boolean'],
             ]);
 
             $payload = $this->parseSqlImportPayload($validated['content']);
         } elseif ($type === 'json') {
             $validated = $request->validate([
                 'content' => ['required', 'string'],
+                'replace' => ['nullable', 'boolean'],
             ]);
 
             $decoded = json_decode($validated['content'], true);
@@ -62,18 +65,34 @@ class DiagramTransferController extends Controller
             'relationships' => count($payload['relationships'] ?? []),
         ]);
 
-        DB::transaction(function () use ($diagram, $payload): void {
-            $diagram->diagramRelationships()->delete();
-            $diagram->diagramTables()->with('diagramColumns')->get()->each(function (DiagramTable $table): void {
-                $table->diagramColumns()->delete();
-                $table->delete();
-            });
-            $diagram->databases()->delete();
+        DB::transaction(function () use ($diagram, $payload, $replace): void {
+            if ($replace) {
+                $diagram->diagramRelationships()->delete();
+                $diagram->diagramTables()->with('diagramColumns')->get()->each(function (DiagramTable $table): void {
+                    $table->diagramColumns()->delete();
+                    $table->delete();
+                });
+            }
 
             $palette = ['#6366f1', '#0ea5e9', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e'];
             $usedTableColors = [];
             $createdTables = [];
             $databaseMap = [];
+            $defaultDatabase = DiagramDatabase::firstOrCreate(
+                ['diagram_id' => $diagram->id, 'name' => 'Default'],
+                ['color' => $palette[0], 'x' => 0, 'y' => 0, 'width' => 1200, 'height' => 800],
+            );
+            $databaseMap[Str::lower($defaultDatabase->name)] = $defaultDatabase;
+
+            $existingTables = DiagramTable::where('diagram_id', $diagram->id)->with('diagramColumns')->get();
+            $tableByName = [];
+            foreach ($existingTables as $existingTable) {
+                $tableByName[Str::lower($existingTable->name)] = $existingTable;
+            }
+
+            $maxX = (int) (DiagramTable::where('diagram_id', $diagram->id)->max('x') ?? 0);
+            $maxY = (int) (DiagramTable::where('diagram_id', $diagram->id)->max('y') ?? 0);
+            $newTableIndex = 0;
 
             foreach ($payload['tables'] as $tableRow) {
                 $databaseName = trim((string) ($tableRow['database_name'] ?? $tableRow['schema'] ?? 'Default')) ?: 'Default';
@@ -92,23 +111,39 @@ class DiagramTransferController extends Controller
                 }
                 $usedTableColors[] = $tableColor;
 
-                $table = DiagramTable::create([
-                    'diagram_id' => $diagram->getKey(),
-                    'database_id' => $databaseMap[$databaseKey]->id,
-                    'name' => $tableRow['name'],
-                    'schema' => $tableRow['schema'] ?? null,
-                    'color' => $tableColor,
-                    'x' => 0,
-                    'y' => 0,
-                    'w' => 320,
-                    'h' => 200,
-                ]);
+                $tableKey = Str::lower((string) $tableRow['name']);
+                $table = $tableByName[$tableKey] ?? null;
 
-                $createdTables[] = $table;
+                if (! $table) {
+                    $table = DiagramTable::create([
+                        'diagram_id' => $diagram->getKey(),
+                        'database_id' => $databaseMap[$databaseKey]->id,
+                        'name' => $tableRow['name'],
+                        'schema' => $tableRow['schema'] ?? null,
+                        'color' => $tableColor,
+                        'x' => $maxX + 400,
+                        'y' => $maxY + ($newTableIndex * 250),
+                        'w' => 320,
+                        'h' => 200,
+                    ]);
+                    $tableByName[$tableKey] = $table;
+                    $createdTables[] = $table;
+                    $newTableIndex++;
+                }
+
+                $existingColumnsByName = DiagramColumn::where('diagram_table_id', $table->id)
+                    ->get()
+                    ->keyBy(fn (DiagramColumn $column) => Str::lower($column->name));
+
                 foreach ($tableRow['columns'] ?? [] as $columnRow) {
+                    $columnName = (string) ($columnRow['name'] ?? '');
+                    if ($columnName === '' || $existingColumnsByName->has(Str::lower($columnName))) {
+                        continue;
+                    }
+
                     DiagramColumn::create([
                         'diagram_table_id' => $table->getKey(),
-                        'name' => $columnRow['name'],
+                        'name' => $columnName,
                         'type' => strtoupper((string) ($columnRow['type'] ?? 'VARCHAR')),
                         'enum_values' => $columnRow['enum_values'] ?? null,
                         'length' => $columnRow['length'] ?? null,
@@ -123,6 +158,8 @@ class DiagramTransferController extends Controller
                         'collation' => $columnRow['collation'] ?? null,
                         'index_type' => $columnRow['index_type'] ?? null,
                     ]);
+
+                    $existingColumnsByName->put(Str::lower($columnName), true);
                 }
             }
 
@@ -162,7 +199,7 @@ class DiagramTransferController extends Controller
                     $maxY = max($maxY, $y + 200);
                 }
 
-                if ($tablesForDatabase) {
+                if ($tablesForDatabase && $replace) {
                     $database->update([
                         'x' => max(0, $minX - 40),
                         'y' => max(0, $minY - 70),
@@ -177,8 +214,12 @@ class DiagramTransferController extends Controller
             $columnModels = [];
             foreach ($diagram->diagramTables()->with('diagramColumns')->get() as $table) {
                 foreach ($table->diagramColumns as $column) {
-                    $lookupKey = Str::lower($table->name).'.'.Str::lower($column->name);
-                    $columnLookup[$lookupKey] = $column->getKey();
+                    $columnName = Str::lower($column->name);
+                    $tableName = Str::lower($table->name);
+                    $columnLookup[$tableName.'.'.$columnName] = $column->getKey();
+                    if (! empty($table->schema)) {
+                        $columnLookup[Str::lower($table->schema).'.'.$tableName.'.'.$columnName] = $column->getKey();
+                    }
                     $columnModels[$column->getKey()] = $column;
                 }
             }
@@ -205,14 +246,21 @@ class DiagramTransferController extends Controller
                     ? 'one_to_one'
                     : 'one_to_many';
 
-                DiagramRelationship::create([
-                    'diagram_id' => $diagram->getKey(),
-                    'from_column_id' => $fromColumnId,
-                    'to_column_id' => $toColumnId,
-                    'type' => $type,
-                    'on_delete' => $fk['on_delete'] ?? null,
-                    'on_update' => $fk['on_update'] ?? null,
-                ]);
+                $relationshipExists = DiagramRelationship::where('diagram_id', $diagram->id)
+                    ->where('from_column_id', $fromColumnId)
+                    ->where('to_column_id', $toColumnId)
+                    ->exists();
+
+                if (! $relationshipExists) {
+                    DiagramRelationship::create([
+                        'diagram_id' => $diagram->getKey(),
+                        'from_column_id' => $fromColumnId,
+                        'to_column_id' => $toColumnId,
+                        'type' => $type,
+                        'on_delete' => $fk['on_delete'] ?? null,
+                        'on_update' => $fk['on_update'] ?? null,
+                    ]);
+                }
             }
 
             $createdRelationshipCount = DiagramRelationship::where('diagram_id', $diagram->id)->count();
