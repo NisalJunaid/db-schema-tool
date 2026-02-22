@@ -57,6 +57,11 @@ class Diagram extends Model
         return $this->hasMany(DiagramTable::class);
     }
 
+    public function databases(): HasMany
+    {
+        return $this->hasMany(DiagramDatabase::class);
+    }
+
     public function diagramRelationships(): HasMany
     {
         return $this->hasMany(DiagramRelationship::class);

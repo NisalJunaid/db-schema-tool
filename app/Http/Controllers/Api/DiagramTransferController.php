@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Diagram;
 use App\Models\DiagramColumn;
+use App\Models\DiagramDatabase;
 use App\Models\DiagramRelationship;
 use App\Models\DiagramTable;
 use Illuminate\Http\JsonResponse;
@@ -67,13 +68,26 @@ class DiagramTransferController extends Controller
                 $table->diagramColumns()->delete();
                 $table->delete();
             });
+            $diagram->databases()->delete();
 
             $palette = ['#6366f1', '#0ea5e9', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e'];
             $createdTables = [];
+            $databaseMap = [];
 
             foreach ($payload['tables'] as $tableRow) {
+                $databaseName = trim((string) ($tableRow['database_name'] ?? $tableRow['schema'] ?? 'Default')) ?: 'Default';
+                $databaseKey = Str::lower($databaseName);
+
+                if (! isset($databaseMap[$databaseKey])) {
+                    $databaseMap[$databaseKey] = DiagramDatabase::firstOrCreate(
+                        ['diagram_id' => $diagram->id, 'name' => $databaseName],
+                        ['color' => $palette[count($databaseMap) % count($palette)], 'x' => 0, 'y' => 0, 'width' => 1200, 'height' => 800],
+                    );
+                }
+
                 $table = DiagramTable::create([
                     'diagram_id' => $diagram->getKey(),
+                    'database_id' => $databaseMap[$databaseKey]->id,
                     'name' => $tableRow['name'],
                     'schema' => $tableRow['schema'] ?? null,
                     'color' => $tableRow['color'] ?? null,
@@ -85,7 +99,7 @@ class DiagramTransferController extends Controller
 
                 $createdTables[] = $table;
                 foreach ($tableRow['columns'] ?? [] as $columnRow) {
-                    $column = DiagramColumn::create([
+                    DiagramColumn::create([
                         'diagram_table_id' => $table->getKey(),
                         'name' => $columnRow['name'],
                         'type' => strtoupper((string) ($columnRow['type'] ?? 'VARCHAR')),
@@ -102,33 +116,55 @@ class DiagramTransferController extends Controller
                         'collation' => $columnRow['collation'] ?? null,
                         'index_type' => $columnRow['index_type'] ?? null,
                     ]);
-
                 }
             }
 
-            $columnsPerRow = (int) ceil(sqrt(max(count($createdTables), 1)));
-            $spacingX = 450;
-            $spacingY = 350;
+            $databaseTables = [];
+            foreach ($createdTables as $table) {
+                $databaseTables[$table->database_id][] = $table;
+            }
 
-            $row = 0;
-            $col = 0;
+            foreach ($databaseMap as $database) {
+                $tablesForDatabase = $databaseTables[$database->id] ?? [];
+                $columnsPerRow = (int) ceil(sqrt(max(count($tablesForDatabase), 1)));
+                $row = 0;
+                $col = 0;
+                $minX = PHP_INT_MAX;
+                $minY = PHP_INT_MAX;
+                $maxX = 0;
+                $maxY = 0;
 
-            foreach ($createdTables as $index => $table) {
-                $x = $col * $spacingX;
-                $y = $row * $spacingY;
+                foreach ($tablesForDatabase as $index => $table) {
+                    $x = (int) $database->x + 80 + ($col * 380);
+                    $y = (int) $database->y + 90 + ($row * 260);
 
-                $table->update([
-                    'color' => $table->color ?: $palette[$index % count($palette)],
-                    'x' => $x,
-                    'y' => $y,
-                    'w' => 320,
-                    'h' => 200,
-                ]);
+                    $table->update([
+                        'color' => $table->color,
+                        'x' => $x,
+                        'y' => $y,
+                        'w' => 320,
+                        'h' => 200,
+                    ]);
 
-                $col++;
-                if ($col >= $columnsPerRow) {
-                    $col = 0;
-                    $row++;
+                    $minX = min($minX, $x);
+                    $minY = min($minY, $y);
+                    $maxX = max($maxX, $x + 320);
+                    $maxY = max($maxY, $y + 200);
+
+                    $col++;
+                    if ($col >= $columnsPerRow) {
+                        $col = 0;
+                        $row++;
+                    }
+                }
+
+                if ($tablesForDatabase) {
+                    $database->update([
+                        'x' => max(0, $minX - 60),
+                        'y' => max(0, $minY - 60),
+                        'width' => max(600, $maxX - $minX + 120),
+                        'height' => max(420, $maxY - $minY + 120),
+                    ]);
                 }
             }
 
@@ -175,7 +211,7 @@ class DiagramTransferController extends Controller
             ]);
         });
 
-        return response()->json($diagram->fresh(['diagramTables.diagramColumns', 'diagramRelationships']));
+        return response()->json($diagram->fresh(['databases', 'diagramTables.diagramColumns', 'diagramRelationships']));
     }
 
     private function normalizeJsonImportPayload(array $payload): array
@@ -234,6 +270,12 @@ class DiagramTransferController extends Controller
 
         foreach ($matches as $tableIndex => $tableMatch) {
             $tableName = $this->extractTableName($tableMatch[1]);
+            $schema = null;
+            if (str_contains($tableName, '.')) {
+                $schema = Str::before($tableName, '.');
+                $tableName = Str::after($tableName, '.');
+            }
+
             $rows = $this->splitSqlDefinitions($tableMatch[2]);
             $columns = [];
             $tablePrimaryColumns = [];
@@ -293,6 +335,8 @@ class DiagramTransferController extends Controller
 
             $tables[] = [
                 'name' => $tableName,
+                'schema' => $schema,
+                'database_name' => $schema ?: 'Default',
                 'columns' => $columns,
                 'x' => 120 + $tableIndex * 40,
                 'y' => 120 + $tableIndex * 40,

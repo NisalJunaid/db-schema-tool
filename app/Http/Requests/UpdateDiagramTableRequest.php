@@ -19,6 +19,7 @@ class UpdateDiagramTableRequest extends FormRequest
         $diagramTable = $this->route('diagram_table');
 
         return [
+            'database_id' => ['nullable', 'integer', 'exists:diagram_databases,id'],
             'name' => [
                 'sometimes',
                 'required',

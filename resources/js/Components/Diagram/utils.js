@@ -87,7 +87,36 @@ export const TABLE_COLOR_OPTIONS = [
     { value: 'rose', label: 'Rose', solid: '#f43f5e', tint: '#ffe4e6' },
 ];
 
+
+function normalizeHexColor(value) {
+    if (typeof value !== 'string') return null;
+    const color = value.trim();
+    if (!color.startsWith('#')) return null;
+    if (color.length === 4) {
+        return `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`.toLowerCase();
+    }
+    if (color.length === 7) return color.toLowerCase();
+    return null;
+}
+
+export function shadeHexColor(hex, percent = -10) {
+    const normalized = normalizeHexColor(hex);
+    if (!normalized) return '#64748b';
+    const amt = Math.round(2.55 * percent);
+    const num = parseInt(normalized.slice(1), 16);
+    const r = Math.max(0, Math.min(255, (num >> 16) + amt));
+    const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00ff) + amt));
+    const b = Math.max(0, Math.min(255, (num & 0x0000ff) + amt));
+
+    return `#${(0x1000000 + (r * 0x10000) + (g * 0x100) + b).toString(16).slice(1)}`;
+}
+
 export function getTableColorMeta(value) {
+    const hexColor = normalizeHexColor(value);
+    if (hexColor) {
+        return { value: hexColor, label: hexColor, solid: hexColor, tint: `${hexColor}20` };
+    }
+
     return TABLE_COLOR_OPTIONS.find((entry) => entry.value === value) ?? TABLE_COLOR_OPTIONS[0];
 }
 
