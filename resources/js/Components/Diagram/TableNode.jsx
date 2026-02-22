@@ -135,20 +135,29 @@ function TableNode({ data }) {
                     const outputHandleId = toColumnHandleId(column.id, 'out');
                     const isHighlighted = Number(selectedColumnId) === Number(column.id);
                     const currentX = tableXById[String(table.id)] ?? 0;
-                    const relatedXs = relationships
-                        .filter((relationship) => relationship.from_column_id === column.id || relationship.to_column_id === column.id)
+                    // Compute handle sides separately for outgoing vs incoming relationships.
+                    // Outgoing (source) relationships: column is from_column_id (edge leaves this table)
+                    const outXs = relationships
+                        .filter((relationship) => Number(relationship.from_column_id) === Number(column.id))
                         .map((relationship) => {
-                            const otherTableId = relationship.from_column_id === column.id
-                                ? columnToTableMap[relationship.to_column_id]
-                                : columnToTableMap[relationship.from_column_id];
+                            const otherTableId = columnToTableMap[relationship.to_column_id];
                             return tableXById[String(otherTableId)] ?? currentX;
                         });
-                    const avgOtherX = relatedXs.length
-                        ? relatedXs.reduce((sum, value) => sum + value, 0) / relatedXs.length
-                        : currentX;
-                    const otherIsRight = avgOtherX > currentX;
-                    const outPosition = otherIsRight ? Position.Right : Position.Left;
-                    const inPosition = otherIsRight ? Position.Left : Position.Right;
+                    const outAvgX = outXs.length ? outXs.reduce((sum, value) => sum + value, 0) / outXs.length : currentX;
+                    const outIsRight = outAvgX > currentX;
+                    const outPosition = outIsRight ? Position.Right : Position.Left;
+
+                    // Incoming (target) relationships: column is to_column_id (edge enters this table)
+                    const inXs = relationships
+                        .filter((relationship) => Number(relationship.to_column_id) === Number(column.id))
+                        .map((relationship) => {
+                            const otherTableId = columnToTableMap[relationship.from_column_id];
+                            return tableXById[String(otherTableId)] ?? currentX;
+                        });
+                    const inAvgX = inXs.length ? inXs.reduce((sum, value) => sum + value, 0) / inXs.length : currentX;
+                    const inIsRight = inAvgX > currentX;
+                    // IMPORTANT: the target handle should face toward the source table.
+                    const inPosition = inIsRight ? Position.Right : Position.Left;
                     const inputHandleSideClass = inPosition === Position.Left
                         ? '!left-0 !-translate-x-1/2'
                         : '!right-0 !translate-x-1/2';
