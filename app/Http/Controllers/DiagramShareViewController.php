@@ -43,7 +43,9 @@ class DiagramShareViewController extends Controller
             ]);
         }
 
-        $diagram = $link->diagram()->with(['diagramTables.diagramColumns', 'diagramRelationships'])->firstOrFail();
+        $diagram = $link->diagram()
+            ->with(['databases', 'diagramTables.diagramColumns', 'diagramRelationships'])
+            ->firstOrFail();
         $user = $request->user();
 
         return Inertia::render('Diagrams/SharedCanvas', [
@@ -54,6 +56,8 @@ class DiagramShareViewController extends Controller
                 'owner_type' => $diagram->owner_type,
                 'owner_id' => $diagram->owner_id,
                 'viewport' => $diagram->viewport,
+                'preview_url' => $diagram->preview_url,
+                'diagram_databases' => $diagram->databases,
                 'diagram_tables' => $diagram->diagramTables,
                 'diagram_relationships' => $diagram->diagramRelationships,
             ],
