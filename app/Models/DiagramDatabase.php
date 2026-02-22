@@ -21,6 +21,13 @@ class DiagramDatabase extends Model
         'height',
     ];
 
+    protected $casts = [
+        'x' => 'float',
+        'y' => 'float',
+        'width' => 'float',
+        'height' => 'float',
+    ];
+
     public function tables(): HasMany
     {
         return $this->hasMany(DiagramTable::class, 'database_id');

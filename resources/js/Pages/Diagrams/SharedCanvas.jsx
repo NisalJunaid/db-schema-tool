@@ -3,14 +3,16 @@ import { useMemo } from 'react';
 import { Background, MiniMap, ReactFlow, ReactFlowProvider } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
+import DatabaseAreaNode from '@/Components/Diagram/DatabaseAreaNode';
 import { asCollection, computeTableDimensions, toColumnHandleId } from '@/Components/Diagram/utils';
-
-const nodeTypes = { tableNode: TableNode };
 
 function SharedCanvasContent() {
     const { diagram, permissions = {}, status = 'active', auth = {} } = usePage().props;
     const authUser = auth?.user ?? null;
     const canEdit = Boolean(permissions?.canEdit);
+    const nodeTypes = useMemo(() => ({ tableNode: TableNode, databaseAreaNode: DatabaseAreaNode }), []);
+
+    const databaseList = useMemo(() => asCollection(diagram?.diagram_databases ?? diagram?.databases, 'diagram_databases'), [diagram?.databases, diagram?.diagram_databases]);
 
     const tableList = useMemo(() => asCollection(diagram?.diagram_tables, 'diagram_tables').map((table) => ({
         ...table,
@@ -32,7 +34,7 @@ function SharedCanvasContent() {
 
     const relationships = useMemo(() => asCollection(diagram?.diagram_relationships, 'diagram_relationships'), [diagram?.diagram_relationships]);
 
-    const nodes = useMemo(() => tableList.map((table) => {
+    const tableNodes = useMemo(() => tableList.map((table) => {
         const computedDimensions = computeTableDimensions(table);
         const rawWidth = Number(table?.w ?? computedDimensions.width ?? 320);
         const width = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : 320;
@@ -56,6 +58,32 @@ function SharedCanvasContent() {
             style: { width, zIndex: 10 },
         };
     }), [columnToTableMap, relationships, tableList, tableXMap]);
+
+    const databaseNodes = useMemo(() => databaseList.map((database) => {
+        const rawW = Number(database?.w ?? database?.width ?? 900);
+        const rawH = Number(database?.h ?? database?.height ?? 600);
+        const width = Number.isFinite(rawW) ? Math.max(rawW, 600) : 900;
+        const height = Number.isFinite(rawH) ? Math.max(rawH, 420) : 600;
+
+        return {
+            id: `db-${database.id}`,
+            type: 'databaseAreaNode',
+            position: {
+                x: Number.isFinite(Number(database?.x)) ? Number(database.x) : 0,
+                y: Number.isFinite(Number(database?.y)) ? Number(database.y) : 0,
+            },
+            draggable: false,
+            selectable: false,
+            data: {
+                name: database?.name,
+                color: database?.color,
+                border: database?.color,
+            },
+            style: { width, height, zIndex: 0 },
+        };
+    }), [databaseList]);
+
+    const nodes = useMemo(() => [...databaseNodes, ...tableNodes], [databaseNodes, tableNodes]);
 
     const edges = useMemo(() => relationships.map((relationship) => {
         const sourceTableId = columnToTableMap[relationship.from_column_id];
