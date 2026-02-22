@@ -141,14 +141,14 @@ function TableNode({ data }) {
                             const otherTableId = relationship.from_column_id === column.id
                                 ? columnToTableMap[relationship.to_column_id]
                                 : columnToTableMap[relationship.from_column_id];
-                            return tableXById[String(otherTableId)] ?? 0;
+                            return tableXById[String(otherTableId)] ?? currentX;
                         });
                     const avgOtherX = relatedXs.length
                         ? relatedXs.reduce((sum, value) => sum + value, 0) / relatedXs.length
                         : currentX;
-                    const relatedIsRight = avgOtherX >= currentX;
-                    const inPosition = relatedIsRight ? Position.Left : Position.Right;
-                    const outPosition = relatedIsRight ? Position.Right : Position.Left;
+                    const otherIsRight = avgOtherX > currentX;
+                    const outPosition = otherIsRight ? Position.Right : Position.Left;
+                    const inPosition = otherIsRight ? Position.Left : Position.Right;
                     const inputHandleSideClass = inPosition === Position.Left
                         ? '!left-0 !-translate-x-1/2'
                         : '!right-0 !translate-x-1/2';
