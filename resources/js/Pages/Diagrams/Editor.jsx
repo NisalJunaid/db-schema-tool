@@ -626,11 +626,13 @@ function DiagramEditorContent() {
 
     const tableXById = useMemo(() => {
         const map = {};
-        (tables ?? []).forEach((table) => {
-            map[String(table.id)] = Number.isFinite(Number(table.x)) ? Number(table.x) : 0;
+        (nodes ?? []).forEach((node) => {
+            map[String(node.id)] = Number.isFinite(Number(node.position?.x))
+                ? Number(node.position.x)
+                : 0;
         });
         return map;
-    }, [tables]);
+    }, [nodes]);
 
     const edges = useMemo(() => {
         return (relationships ?? []).map((relationship) => {
@@ -666,7 +668,7 @@ function DiagramEditorContent() {
                 labelStyle: { fill: '#334155', fontSize: 11, fontWeight: 600 },
             };
         }).filter(Boolean);
-    }, [relationships, selectedEdgeId, columnToTableMap, relationshipLabel, tableXById]);
+    }, [relationships, selectedEdgeId, columnToTableMap, relationshipLabel, tableXById, nodes]);
 
     const decoratedFlowNodes = useMemo(() => {
         if (!isFlow) return flowNodes;
