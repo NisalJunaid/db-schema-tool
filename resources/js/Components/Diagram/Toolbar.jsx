@@ -64,10 +64,10 @@ export default function Toolbar({
                         <button
                             type="button"
                             onClick={onImport}
-                            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                            title="Import"
+                            className="rounded-md p-2 text-slate-600 hover:bg-slate-100"
                         >
-                            <i className="fa-solid fa-file-import" />
-                            <span>Import</span>
+                            <i className="fa-solid fa-file-import text-base" />
                         </button>
                     )}
                     <IconButton title="Export" onClick={onExport} icon="fa-solid fa-file-arrow-down" />
