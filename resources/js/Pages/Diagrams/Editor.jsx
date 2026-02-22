@@ -32,7 +32,7 @@ import { asCollection, computeTableDimensions, getTableColorMeta, parseColumnIdF
 import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
 const defaultTableSize = { w: 320, h: 240 };
-const defaultColumnForm = { tableId: '', preset: '', name: '', type: 'VARCHAR(255)', nullable: false, primary: false, unique: false, default: '' };
+const defaultColumnForm = { tableId: '', preset: '', name: '', type: 'VARCHAR', enum_values: [], length: 255, precision: 10, scale: 2, unsigned: false, auto_increment: false, nullable: false, primary: false, unique: false, index_type: '', default: '', collation: '' };
 const diagramColorPalette = ['#6366f1', '#0ea5e9', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e'];
 const IMAGE_EXPORT_SECURITY_MESSAGE = "Image export blocked by browser security (cross-origin assets). If you're using CDN fonts/icons, bundle them locally.";
 const isImageSecurityError = (error) => error?.name === 'SecurityError' || /tainted canvases|cross-origin/i.test(error?.message ?? '');
@@ -564,7 +564,7 @@ function DiagramEditorContent() {
     }, [canEdit, commitEditorState, editMode, relationships, schedulePreviewUpload, tables]);
 
     const onAddColumn = useCallback((tableId) => { setFormErrors({}); setColumnModalMode('create'); setEditingColumn(null); setAddColumnForm({ ...defaultColumnForm, tableId: String(tableId) }); setShowAddColumnModal(true); }, []);
-    const onEditColumn = useCallback((column) => { setFormErrors({}); setColumnModalMode('edit'); setEditingColumn(column); setAddColumnForm({ ...defaultColumnForm, tableId: String(column.diagram_table_id), name: column.name, type: column.type, nullable: Boolean(column.nullable), primary: Boolean(column.primary), unique: Boolean(column.unique), default: column.default ?? '' }); setShowAddColumnModal(true); }, []);
+    const onEditColumn = useCallback((column) => { setFormErrors({}); setColumnModalMode('edit'); setEditingColumn(column); setAddColumnForm({ ...defaultColumnForm, tableId: String(column.diagram_table_id), name: column.name, type: column.type, enum_values: column.enum_values ?? [], length: column.length ?? 255, precision: column.precision ?? 10, scale: column.scale ?? 2, unsigned: Boolean(column.unsigned), auto_increment: Boolean(column.auto_increment), nullable: Boolean(column.nullable), primary: Boolean(column.primary), unique: Boolean(column.unique), index_type: column.index_type ?? '', default: column.default ?? '', collation: column.collation ?? '' }); setShowAddColumnModal(true); }, []);
 
     const onDeleteColumn = useCallback(async (columnId) => {
         if (!canEdit || !editMode || !window.confirm('Delete this field?')) return;
@@ -624,7 +624,9 @@ function DiagramEditorContent() {
             sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'),
             targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'),
             type: 'default',
-            label: relationshipLabel(relationship.type),
+            label: relationship.on_delete || relationship.on_update
+                ? `1:N${relationship.on_delete ? ` (ON DELETE ${relationship.on_delete})` : ''}${relationship.on_update ? ` (ON UPDATE ${relationship.on_update})` : ''}`
+                : relationshipLabel(relationship.type),
             animated: false,
             data: { type: relationship.type },
             selected: isSelected,
@@ -1512,14 +1514,14 @@ function DiagramEditorContent() {
         try {
             setSavingState('Saving...');
             if (columnModalMode === 'create') {
-                const response = await api.post('/api/v1/diagram-columns', { diagram_table_id: Number(sourceForm.tableId), name: sourceForm.name, type: sourceForm.type, nullable: sourceForm.nullable, primary: sourceForm.primary, unique: sourceForm.unique, default: sourceForm.default || null });
+                const response = await api.post('/api/v1/diagram-columns', { diagram_table_id: Number(sourceForm.tableId), name: sourceForm.name, type: sourceForm.type, enum_values: sourceForm.enum_values, length: sourceForm.length, precision: sourceForm.precision, scale: sourceForm.scale, unsigned: sourceForm.unsigned, auto_increment: sourceForm.auto_increment, nullable: sourceForm.nullable, primary: sourceForm.primary, unique: sourceForm.unique, index_type: sourceForm.index_type || null, default: sourceForm.default || null, collation: sourceForm.collation || null });
                 const createdColumn = response?.data ?? response;
                 const nextTables = tables.map((table) => (String(table.id) === String(sourceForm.tableId) ? { ...table, columns: [...(table.columns ?? []), createdColumn] } : table));
                 commitEditorState(nextTables, relationships, previousTables, relationships);
                 schedulePreviewUpload();
                 setNodes((nds) => nds.map((n) => (n.id === String(sourceForm.tableId) ? { ...n } : n)));
             } else {
-                const response = await api.patch(`/api/v1/diagram-columns/${editingColumn.id}`, { name: sourceForm.name, type: sourceForm.type, nullable: sourceForm.nullable, primary: sourceForm.primary, unique: sourceForm.unique, default: sourceForm.default || null });
+                const response = await api.patch(`/api/v1/diagram-columns/${editingColumn.id}`, { name: sourceForm.name, type: sourceForm.type, enum_values: sourceForm.enum_values, length: sourceForm.length, precision: sourceForm.precision, scale: sourceForm.scale, unsigned: sourceForm.unsigned, auto_increment: sourceForm.auto_increment, nullable: sourceForm.nullable, primary: sourceForm.primary, unique: sourceForm.unique, index_type: sourceForm.index_type || null, default: sourceForm.default || null, collation: sourceForm.collation || null });
                 const updatedColumn = response?.data ?? response;
                 const nextTables = tables.map((table) => ({ ...table, columns: (table.columns ?? []).map((column) => (Number(column.id) === Number(updatedColumn.id) ? updatedColumn : column)) }));
                 commitEditorState(nextTables, relationships, previousTables, relationships);

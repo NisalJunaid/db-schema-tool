@@ -2,17 +2,20 @@ export const COLUMN_TYPE_OPTIONS = [
     'INT',
     'BIGINT',
     'SMALLINT',
-    'VARCHAR(255)',
+    'VARCHAR',
     'TEXT',
     'LONGTEXT',
     'BOOLEAN',
     'DATE',
     'DATETIME',
     'TIMESTAMP',
-    'DECIMAL(10,2)',
+    'DECIMAL',
     'FLOAT',
     'UUID',
     'JSON',
+    'ENUM',
+    'MEDIUMTEXT',
+    'TINYTEXT',
 ];
 
 export const COLUMN_PRESETS = [
@@ -86,6 +89,38 @@ export const TABLE_COLOR_OPTIONS = [
 
 export function getTableColorMeta(value) {
     return TABLE_COLOR_OPTIONS.find((entry) => entry.value === value) ?? TABLE_COLOR_OPTIONS[0];
+}
+
+
+export function formatColumnType(column) {
+    const baseType = String(column?.type ?? 'VARCHAR').toUpperCase();
+
+    if (baseType === 'ENUM') {
+        const values = Array.isArray(column?.enum_values) ? column.enum_values : [];
+        const serialized = values.map((value) => `'${String(value).replace(/'/g, "''")}'`).join(',');
+        return `ENUM(${serialized})`;
+    }
+
+    if (baseType === 'DECIMAL') {
+        const precision = Number(column?.precision);
+        const scale = Number(column?.scale);
+        if (Number.isFinite(precision) && Number.isFinite(scale)) {
+            return `DECIMAL(${precision},${scale})`;
+        }
+    }
+
+    if (baseType === 'VARCHAR') {
+        const length = Number(column?.length);
+        if (Number.isFinite(length) && length > 0) {
+            return `VARCHAR(${length})`;
+        }
+    }
+
+    const withUnsigned = column?.unsigned && ['INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT'].includes(baseType)
+        ? `${baseType} UNSIGNED`
+        : baseType;
+
+    return withUnsigned;
 }
 
 export function relationshipLabel(type) {
