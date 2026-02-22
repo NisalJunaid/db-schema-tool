@@ -616,35 +616,57 @@ function DiagramEditorContent() {
         }).filter(Boolean));
     }, [tables, editMode, selectedColumnId, buildNodeData, selectedNodeId]);
 
-    const edges = useMemo(() => relationships.map((relationship) => {
-        const sourceTableId = columnToTableMap[relationship.from_column_id];
-        const targetTableId = columnToTableMap[relationship.to_column_id];
-        if (!sourceTableId || !targetTableId) return null;
-        const isSelected = selectedEdgeId === String(relationship.id);
-        let label = relationship.type === 'one_to_one' ? '1:1' : '1:N';
-        if (relationship.on_delete) {
-            label += ` (ON DELETE ${relationship.on_delete})`;
+    const relationshipLabel = useCallback((type, onDelete = null) => {
+        let label = type === 'one_to_one' ? '1:1' : '1:N';
+        if (onDelete) {
+            label += ` (ON DELETE ${onDelete})`;
         }
-        return {
-            id: String(relationship.id),
-            source: String(sourceTableId),
-            target: String(targetTableId),
-            sourceHandle: toColumnHandleId(relationship.from_column_id, 'out'),
-            targetHandle: toColumnHandleId(relationship.to_column_id, 'in'),
-            type: 'default',
-            label,
-            animated: false,
-            data: { type: relationship.type },
-            selected: isSelected,
-            style: {
-                strokeDasharray: '5 5',
-                strokeWidth: isSelected ? 4 : 2,
-                stroke: relationship.color || '#64748b',
-                opacity: isSelected ? 1 : 0.9,
-            },
-            labelStyle: { fill: '#334155', fontSize: 11, fontWeight: 600 },
-        };
-    }).filter(Boolean), [relationships, selectedEdgeId, columnToTableMap]);
+        return label;
+    }, []);
+
+    const tableXById = useMemo(() => {
+        const map = {};
+        (tables ?? []).forEach((table) => {
+            map[String(table.id)] = Number.isFinite(Number(table.x)) ? Number(table.x) : 0;
+        });
+        return map;
+    }, [tables]);
+
+    const edges = useMemo(() => {
+        return (relationships ?? []).map((relationship) => {
+            const sourceTableId = columnToTableMap[relationship.from_column_id];
+            const targetTableId = columnToTableMap[relationship.to_column_id];
+            if (!sourceTableId || !targetTableId) return null;
+
+            const sourceX = tableXById[String(sourceTableId)] ?? 0;
+            const targetX = tableXById[String(targetTableId)] ?? 0;
+
+            const targetIsRight = targetX >= sourceX;
+            const sourceSide = targetIsRight ? 'out' : 'in';
+            const targetSide = targetIsRight ? 'in' : 'out';
+            const isSelected = selectedEdgeId === String(relationship.id);
+
+            return {
+                id: String(relationship.id),
+                source: String(sourceTableId),
+                target: String(targetTableId),
+                sourceHandle: toColumnHandleId(relationship.from_column_id, sourceSide),
+                targetHandle: toColumnHandleId(relationship.to_column_id, targetSide),
+                type: 'default',
+                label: relationshipLabel(relationship.type, relationship.on_delete),
+                animated: false,
+                data: { type: relationship.type },
+                selected: isSelected,
+                style: {
+                    strokeDasharray: '5 5',
+                    strokeWidth: isSelected ? 4 : 2,
+                    stroke: relationship.color || '#64748b',
+                    opacity: isSelected ? 1 : 0.9,
+                },
+                labelStyle: { fill: '#334155', fontSize: 11, fontWeight: 600 },
+            };
+        }).filter(Boolean);
+    }, [relationships, selectedEdgeId, columnToTableMap, relationshipLabel, tableXById]);
 
     const decoratedFlowNodes = useMemo(() => {
         if (!isFlow) return flowNodes;
