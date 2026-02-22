@@ -61,23 +61,24 @@ class DiagramTransferController extends Controller
                 $table->delete();
             });
 
-            $tableMap = [];
+            $palette = ['#6366f1', '#0ea5e9', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e'];
+            $createdTables = [];
             $columnMap = [];
+            $columnIndexMap = [];
 
-            foreach ($payload['tables'] as $index => $tableRow) {
+            foreach ($payload['tables'] as $tableRow) {
                 $table = DiagramTable::create([
                     'diagram_id' => $diagram->getKey(),
                     'name' => $tableRow['name'],
                     'schema' => $tableRow['schema'] ?? null,
                     'color' => $tableRow['color'] ?? null,
-                    'x' => (int) ($tableRow['x'] ?? 120 + ($index * 50)),
-                    'y' => (int) ($tableRow['y'] ?? 120 + ($index * 40)),
-                    'w' => (int) ($tableRow['w'] ?? 320),
-                    'h' => (int) ($tableRow['h'] ?? 240),
+                    'x' => 0,
+                    'y' => 0,
+                    'w' => 320,
+                    'h' => 200,
                 ]);
 
-                $tableMap[Str::lower($table->name)] = $table->getKey();
-
+                $createdTables[] = $table;
                 foreach ($tableRow['columns'] ?? [] as $columnRow) {
                     $column = DiagramColumn::create([
                         'diagram_table_id' => $table->getKey(),
@@ -98,6 +99,33 @@ class DiagramTransferController extends Controller
                     ]);
 
                     $columnMap[Str::lower($table->name.'.'.$column->name)] = $column->getKey();
+                    $columnIndexMap[$column->getKey()] = $column;
+                }
+            }
+
+            $columnsPerRow = (int) ceil(sqrt(max(count($createdTables), 1)));
+            $spacingX = 450;
+            $spacingY = 350;
+
+            $row = 0;
+            $col = 0;
+
+            foreach ($createdTables as $index => $table) {
+                $x = $col * $spacingX;
+                $y = $row * $spacingY;
+
+                $table->update([
+                    'color' => $table->color ?: $palette[$index % count($palette)],
+                    'x' => $x,
+                    'y' => $y,
+                    'w' => 320,
+                    'h' => 200,
+                ]);
+
+                $col++;
+                if ($col >= $columnsPerRow) {
+                    $col = 0;
+                    $row++;
                 }
             }
 
@@ -109,11 +137,18 @@ class DiagramTransferController extends Controller
                     continue;
                 }
 
+                $fromColumn = $columnIndexMap[$fromColumnId] ?? DiagramColumn::query()->find($fromColumnId);
+                $type = in_array($fromColumn?->index_type, ['unique', 'primary'], true)
+                    || $fromColumn?->unique
+                    || $fromColumn?->primary
+                    ? 'one_to_one'
+                    : 'one_to_many';
+
                 DiagramRelationship::create([
                     'diagram_id' => $diagram->getKey(),
                     'from_column_id' => $fromColumnId,
                     'to_column_id' => $toColumnId,
-                    'type' => 'one_to_many',
+                    'type' => $type,
                     'on_delete' => $relationshipRow['on_delete'] ?? null,
                     'on_update' => $relationshipRow['on_update'] ?? null,
                 ]);
@@ -141,8 +176,29 @@ class DiagramTransferController extends Controller
             'tables.*.columns.*.primary' => ['nullable', 'boolean'],
             'tables.*.columns.*.unique' => ['nullable', 'boolean'],
             'tables.*.columns.*.default' => ['nullable', 'string', 'max:255'],
+            'foreignKeys' => ['nullable', 'array'],
+            'foreignKeys.*.from_table' => ['required_with:foreignKeys', 'string', 'max:255'],
+            'foreignKeys.*.from_column' => ['required_with:foreignKeys', 'string', 'max:255'],
+            'foreignKeys.*.to_table' => ['required_with:foreignKeys', 'string', 'max:255'],
+            'foreignKeys.*.to_column' => ['required_with:foreignKeys', 'string', 'max:255'],
             'relationships' => ['nullable', 'array'],
         ])->validate();
+
+        $relationships = collect($payload['relationships'] ?? [])
+            ->merge($payload['foreignKeys'] ?? [])
+            ->map(fn (array $relationship) => [
+                'from_table' => $relationship['from_table'] ?? null,
+                'from_column' => $relationship['from_column'] ?? null,
+                'to_table' => $relationship['to_table'] ?? null,
+                'to_column' => $relationship['to_column'] ?? null,
+                'on_delete' => $relationship['on_delete'] ?? null,
+                'on_update' => $relationship['on_update'] ?? null,
+            ])
+            ->filter(fn (array $relationship) => $relationship['from_table'] && $relationship['from_column'] && $relationship['to_table'] && $relationship['to_column'])
+            ->values()
+            ->all();
+
+        $payload['relationships'] = $relationships;
 
         return $payload;
     }

@@ -29,7 +29,7 @@ import Toast from '@/Components/UI/Toast';
 import { mindNodeTypes } from '@/Components/CanvasMind/mindTypes';
 import { collectDescendantIds } from '@/Components/CanvasMind/mindLayout';
 import { createMindChildNode, createMindRootNode } from '@/Components/CanvasMind/mindDefaults';
-import { asCollection, computeTableDimensions, getTableColorMeta, parseColumnIdFromHandle, relationshipLabel, toColumnHandleId } from '@/Components/Diagram/utils';
+import { asCollection, computeTableDimensions, getTableColorMeta, parseColumnIdFromHandle, toColumnHandleId } from '@/Components/Diagram/utils';
 import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
 const defaultTableSize = { w: 320, h: 240 };
@@ -619,6 +619,10 @@ function DiagramEditorContent() {
         const targetTableId = columnToTableMap[relationship.to_column_id];
         if (!sourceTableId || !targetTableId) return null;
         const isSelected = selectedEdgeId === String(relationship.id);
+        let label = relationship.type === 'one_to_one' ? '1:1' : '1:N';
+        if (relationship.on_delete) {
+            label += ` (ON DELETE ${relationship.on_delete})`;
+        }
         return {
             id: String(relationship.id),
             source: String(sourceTableId),
@@ -626,9 +630,7 @@ function DiagramEditorContent() {
             sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'),
             targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'),
             type: 'default',
-            label: relationship.on_delete || relationship.on_update
-                ? `1:N${relationship.on_delete ? ` (ON DELETE ${relationship.on_delete})` : ''}${relationship.on_update ? ` (ON UPDATE ${relationship.on_update})` : ''}`
-                : relationshipLabel(relationship.type),
+            label,
             animated: false,
             data: { type: relationship.type },
             selected: isSelected,
