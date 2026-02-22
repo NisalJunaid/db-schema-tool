@@ -16,6 +16,7 @@ const modeLabel = { db: 'Database Diagram', flow: 'Flowchart', mind: 'Mind Map' 
 export default function Toolbar({
     savingState,
     onSave,
+    onImport,
     onExport,
     onExportImage,
     onUndo,
@@ -59,6 +60,16 @@ export default function Toolbar({
                     <IconButton title="Undo" onClick={onUndo} icon="fa-solid fa-rotate-left" disabled={!canUndo} />
                     <IconButton title="Redo" onClick={onRedo} icon="fa-solid fa-rotate-right" disabled={!canRedo} />
                     <IconButton title="Delete selection" onClick={onDeleteSelection} icon="fa-solid fa-trash" className="text-rose-600 hover:text-rose-700" disabled={!canDeleteSelection} />
+                    {editorMode === 'db' && (
+                        <button
+                            type="button"
+                            onClick={onImport}
+                            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                        >
+                            <i className="fa-solid fa-file-import" />
+                            <span>Import</span>
+                        </button>
+                    )}
                     <IconButton title="Export" onClick={onExport} icon="fa-solid fa-file-arrow-down" />
                     <IconButton title="Export image" onClick={onExportImage} icon="fa-solid fa-image" />
                     <IconButton title={showMiniMap ? 'Hide minimap' : 'Show minimap'} onClick={onToggleMiniMap} icon="fa-regular fa-map" className={showMiniMap ? 'border-indigo-300 text-indigo-700' : ''} />

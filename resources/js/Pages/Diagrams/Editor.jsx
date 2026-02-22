@@ -25,6 +25,7 @@ import MindSidebar from '@/Components/CanvasMind/MindSidebar';
 import FloatingToolbox from '@/Components/CanvasUI/FloatingToolbox';
 import SelectionInspector from '@/Components/CanvasUI/SelectionInspector';
 import DoodleLayer from '@/Components/CanvasShared/DoodleLayer';
+import Toast from '@/Components/UI/Toast';
 import { mindNodeTypes } from '@/Components/CanvasMind/mindTypes';
 import { collectDescendantIds } from '@/Components/CanvasMind/mindLayout';
 import { createMindChildNode, createMindRootNode } from '@/Components/CanvasMind/mindDefaults';
@@ -162,6 +163,7 @@ function DiagramEditorContent() {
     const [formErrors, setFormErrors] = useState({});
 
     const [showImportModal, setShowImportModal] = useState(false);
+    const [toast, setToast] = useState(null);
     const [showExportModal, setShowExportModal] = useState(false);
     const [showOpenModal, setShowOpenModal] = useState(false);
     const [showNewModal, setShowNewModal] = useState(false);
@@ -1542,7 +1544,12 @@ function DiagramEditorContent() {
         reactFlowRef.current?.setCenter(node.position.x + 160, node.position.y + 100, { zoom: 1.1, duration: 500 });
     }, [nodes]);
 
-    const handleImport = async (payload) => { setSavingState('Saving...'); await api.post(`/api/v1/diagrams/${diagramId}/import`, payload); await loadDiagram(); setSavingState('Saved'); };
+    const handleImportSuccess = async () => {
+        setSavingState('Saving...');
+        await loadDiagram();
+        setSavingState('Saved');
+        setToast({ message: 'Import successful', variant: 'success' });
+    };
 
 
     const resolveDiagramCaptureElements = () => {
@@ -1715,6 +1722,7 @@ function DiagramEditorContent() {
                     <Toolbar
                         savingState={savingState}
                         onSave={manualSave}
+                        onImport={() => setShowImportModal(true)}
                         onExport={() => setShowExportModal(true)}
                         onExportImage={exportImage}
                         onUndo={undoHistory}
@@ -1941,7 +1949,12 @@ function DiagramEditorContent() {
             <AddTableModal open={showAddTableModal} form={addTableForm} errors={formErrors} onChange={(field, value) => setAddTableForm((current) => ({ ...current, [field]: value }))} onClose={() => setShowAddTableModal(false)} onSubmit={submitAddTable} />
             <AddColumnModal isOpen={showAddColumnModal} mode={columnModalMode} form={addColumnForm} column={editingColumn} errors={formErrors} onClose={() => { setShowAddColumnModal(false); setEditingColumn(null); setAddColumnForm(defaultColumnForm); }} onSubmit={submitAddColumn} />
             <RelationshipModal isOpen={relationshipModalState.open} mode={relationshipModalState.mode} relationshipType={relationshipModalState.type} onTypeChange={(type) => setRelationshipModalState((state) => ({ ...state, type }))} onClose={() => { setRelationshipModalState((state) => ({ ...state, open: false })); setRelationshipDraft(null); }} onSubmit={submitRelationship} />
-            <ImportModal open={showImportModal} onClose={() => setShowImportModal(false)} onImport={handleImport} />
+            <ImportModal
+                open={showImportModal}
+                diagramId={diagramId}
+                onClose={() => setShowImportModal(false)}
+                onImported={handleImportSuccess}
+            />
             <ExportModal
                 open={showExportModal}
                 onClose={() => setShowExportModal(false)}
@@ -1979,6 +1992,7 @@ function DiagramEditorContent() {
             <OpenDiagramModal open={showOpenModal} diagrams={allDiagrams} onClose={() => setShowOpenModal(false)} onOpen={(selected) => router.visit(`/diagrams/${selected.id}`)} />
             <NewDiagramModal open={showNewModal} teams={teams} onClose={() => setShowNewModal(false)} onCreate={async (payload) => { const created = await api.post('/api/v1/diagrams', payload); router.visit(`/diagrams/${created?.id}`); }} />
             {canManageAccess && <ShareAccessModal diagram={diagram} teams={teams} open={showShareModal} onClose={() => setShowShareModal(false)} />}
+            <Toast message={toast?.message} variant={toast?.variant} onClose={() => setToast(null)} />
         </>
     );
 }
