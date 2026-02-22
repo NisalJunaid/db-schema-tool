@@ -60,6 +60,7 @@ Route::middleware('auth')->group(function () {
         Route::apiResource('diagrams', DiagramController::class);
         Route::post('diagrams/{diagram}/invite', [DiagramController::class, 'invite']);
         Route::post('diagrams/{diagram}/import', [DiagramTransferController::class, 'import']);
+        Route::delete('diagrams/{diagram}/clear', [DiagramController::class, 'clear']);
         Route::get('diagrams/{diagram}/export-sql', [DiagramTransferController::class, 'exportSql']);
         Route::get('diagrams/{diagram}/export-migrations', [DiagramTransferController::class, 'exportMigrations']);
 

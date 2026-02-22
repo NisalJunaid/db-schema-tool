@@ -627,8 +627,8 @@ function DiagramEditorContent() {
             id: String(relationship.id),
             source: String(sourceTableId),
             target: String(targetTableId),
-            sourceHandle: relationship.sourceHandle || toColumnHandleId(relationship.from_column_id, 'out'),
-            targetHandle: relationship.targetHandle || toColumnHandleId(relationship.to_column_id, 'in'),
+            sourceHandle: toColumnHandleId(relationship.from_column_id, 'out'),
+            targetHandle: toColumnHandleId(relationship.to_column_id, 'in'),
             type: 'default',
             label,
             animated: false,
@@ -1553,6 +1553,21 @@ function DiagramEditorContent() {
         setToast({ message: 'Import successful', variant: 'success' });
     };
 
+    const clearDiagram = async () => {
+        if (!canEdit) return;
+
+        if (!window.confirm('This will delete ALL tables and relationships in this diagram. Continue?')) {
+            return;
+        }
+
+        try {
+            await api.delete(`/api/v1/diagrams/${diagramId}/clear`);
+            await loadDiagram();
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
 
     const resolveDiagramCaptureElements = () => {
         const flowRoot = document.querySelector('.react-flow');
@@ -1727,6 +1742,7 @@ function DiagramEditorContent() {
                         onImport={() => setShowImportModal(true)}
                         onExport={() => setShowExportModal(true)}
                         onExportImage={exportImage}
+                        onClear={clearDiagram}
                         onUndo={undoHistory}
                         onRedo={redoHistory}
                         canUndo={canUndo}

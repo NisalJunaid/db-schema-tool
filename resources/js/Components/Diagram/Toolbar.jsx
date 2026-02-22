@@ -19,6 +19,7 @@ export default function Toolbar({
     onImport,
     onExport,
     onExportImage,
+    onClear,
     onUndo,
     onRedo,
     canUndo,
@@ -71,6 +72,14 @@ export default function Toolbar({
                         </button>
                     )}
                     <IconButton title="Export" onClick={onExport} icon="fa-solid fa-file-arrow-down" />
+                    <button
+                        type="button"
+                        onClick={onClear}
+                        title="Clear Diagram"
+                        className="rounded-md p-2 text-red-600 hover:bg-red-50"
+                    >
+                        <i className="fa-solid fa-trash-can" />
+                    </button>
                     <IconButton title="Export image" onClick={onExportImage} icon="fa-solid fa-image" />
                     <IconButton title={showMiniMap ? 'Hide minimap' : 'Show minimap'} onClick={onToggleMiniMap} icon="fa-regular fa-map" className={showMiniMap ? 'border-indigo-300 text-indigo-700' : ''} />
                     <IconButton title={showGrid ? 'Hide grid' : 'Show grid'} onClick={onToggleGrid} icon="fa-solid fa-border-all" className={showGrid ? 'border-indigo-300 text-indigo-700' : ''} />

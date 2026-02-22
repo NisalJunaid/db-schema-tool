@@ -120,8 +120,22 @@ class DiagramController extends Controller
 
         return response()->json([
             ...$diagram->toArray(),
+            'diagram_relationships' => $diagram->diagramRelationships,
             'permissions' => $this->diagramPermissions($request, $diagram),
         ]);
+    }
+
+    public function clear(Diagram $diagram): JsonResponse
+    {
+        $this->authorize('edit', $diagram);
+
+        $diagram->diagramRelationships()->delete();
+        $diagram->diagramTables()->each(function ($table): void {
+            $table->diagramColumns()->delete();
+            $table->delete();
+        });
+
+        return response()->json(['status' => 'cleared']);
     }
 
     public function update(UpdateDiagramRequest $request, Diagram $diagram): JsonResponse
