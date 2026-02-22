@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position } from 'reactflow';
 import ColorPickerPopover from '@/Components/Diagram/ColorPickerPopover';
-import { getTableColorMeta, toColumnHandleId } from '@/Components/Diagram/utils';
+import { formatColumnType, getTableColorMeta, toColumnHandleId } from '@/Components/Diagram/utils';
 
 function TableNode({ data }) {
     const table = data?.table ?? {};
@@ -150,7 +150,7 @@ function TableNode({ data }) {
 
                             <div className="flex min-w-0 flex-1 items-center justify-between gap-2 pl-2">
                                 <span className="truncate font-medium text-slate-900">{column.name}</span>
-                                <span className="shrink-0 text-slate-500">{column.type ?? 'string'}</span>
+                                <span className="shrink-0 text-slate-500">{formatColumnType(column)}</span>
                             </div>
 
                             {editMode && isActive && (

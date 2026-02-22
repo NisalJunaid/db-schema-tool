@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import ColorPicker from '@/Components/Diagram/ColorPicker';
-import { getTableColorMeta } from '@/Components/Diagram/utils';
+import { formatColumnType, getTableColorMeta } from '@/Components/Diagram/utils';
 
 export default function Sidebar({
     diagramName,
@@ -174,7 +174,7 @@ export default function Sidebar({
                                                     className="flex min-w-0 flex-1 items-center justify-between text-left"
                                                 >
                                                     <span className="truncate">{column.name}</span>
-                                                    <span className="shrink-0 text-slate-400">{column.type}</span>
+                                                    <span className="shrink-0 text-slate-400">{formatColumnType(column)}</span>
                                                 </button>
 
                                                 {editMode && (

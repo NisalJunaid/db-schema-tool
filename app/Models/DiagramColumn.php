@@ -19,10 +19,20 @@ class DiagramColumn extends Model
         'diagram_table_id',
         'name',
         'type',
+        'enum_values',
+        'length',
+        'precision',
+        'scale',
+        'unsigned',
+        'auto_increment',
         'nullable',
         'primary',
         'unique',
         'default',
+        'collation',
+        'index_type',
+        'on_delete',
+        'on_update',
     ];
 
     /**
@@ -34,6 +44,9 @@ class DiagramColumn extends Model
         'nullable' => 'boolean',
         'primary' => 'boolean',
         'unique' => 'boolean',
+        'enum_values' => 'array',
+        'unsigned' => 'boolean',
+        'auto_increment' => 'boolean',
     ];
 
     public function diagramTable(): BelongsTo
