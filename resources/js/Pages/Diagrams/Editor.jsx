@@ -411,6 +411,10 @@ function DiagramEditorContent() {
             setHistory({ past: [], present: buildDbSnapshot(normalizedTables, relationshipRows), future: [] });
             setFlowHistory({ past: [], present: { nodes: cloneState(loadedFlowNodes), edges: cloneState(loadedFlowEdges) }, future: [] });
             setMindHistory({ past: [], present: { nodes: cloneState(loadedMindNodes), edges: cloneState(loadedMindEdges) }, future: [] });
+
+            return {
+                relationshipCount: relationshipRows.length,
+            };
         } catch (loadError) {
             if (loadError?.status === 401) return handle401();
             setError(loadError.message || 'Unable to load diagram.');
@@ -1546,10 +1550,22 @@ function DiagramEditorContent() {
         reactFlowRef.current?.setCenter(node.position.x + 160, node.position.y + 100, { zoom: 1.1, duration: 500 });
     }, [nodes]);
 
-    const handleImportSuccess = async () => {
+    const handleImportSuccess = async (importedDiagramPayload = null) => {
         setSavingState('Saving...');
-        await loadDiagram();
+        const reloadedDiagram = await loadDiagram();
         setSavingState('Saved');
+
+        const importedRelationshipCount = Array.isArray(importedDiagramPayload?.diagram_relationships)
+            ? importedDiagramPayload.diagram_relationships.length
+            : Array.isArray(importedDiagramPayload?.diagramRelationships)
+                ? importedDiagramPayload.diagramRelationships.length
+                : null;
+
+        if (importedRelationshipCount && reloadedDiagram?.relationshipCount === 0) {
+            setToast({ message: 'Import succeeded, but relationships did not reload. Please refresh.', variant: 'warning' });
+            return;
+        }
+
         setToast({ message: 'Import successful', variant: 'success' });
     };
 

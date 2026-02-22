@@ -54,6 +54,13 @@ class DiagramTransferController extends Controller
             ], 422);
         }
 
+        logger()->info('Diagram import parsed', [
+            'diagram_id' => $diagram->id,
+            'type' => $type,
+            'tables' => count($payload['tables'] ?? []),
+            'relationships' => count($payload['relationships'] ?? []),
+        ]);
+
         DB::transaction(function () use ($diagram, $payload): void {
             $diagram->diagramRelationships()->delete();
             $diagram->diagramTables()->with('diagramColumns')->get()->each(function (DiagramTable $table): void {
@@ -159,6 +166,13 @@ class DiagramTransferController extends Controller
                     'on_update' => $fk['on_update'] ?? null,
                 ]);
             }
+
+            $createdRelationshipCount = DiagramRelationship::where('diagram_id', $diagram->id)->count();
+
+            logger()->info('Diagram import relationships saved', [
+                'diagram_id' => $diagram->id,
+                'relationships' => $createdRelationshipCount,
+            ]);
         });
 
         return response()->json($diagram->fresh(['diagramTables.diagramColumns', 'diagramRelationships']));
@@ -212,12 +226,14 @@ class DiagramTransferController extends Controller
     private function parseSqlImportPayload(string $sql): array
     {
         $tables = [];
-        $relationships = [];
+        $createRelationships = [];
 
-        preg_match_all('/CREATE\s+TABLE\s+[`"]?([\w.]+)[`"]?\s*\((.*?)\)\s*;?/is', $sql, $matches, PREG_SET_ORDER);
+        $tableIdentifierPattern = '((?:[`"]?[\w\-]+[`"]?\s*\.\s*)?[`"]?[\w\-]+[`"]?)';
+
+        preg_match_all('/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?'.$tableIdentifierPattern.'\s*\((.*?)\)\s*(?:ENGINE|COMMENT|;|$)/is', $sql, $matches, PREG_SET_ORDER);
 
         foreach ($matches as $tableIndex => $tableMatch) {
-            $tableName = Str::afterLast($tableMatch[1], '.');
+            $tableName = $this->extractTableName($tableMatch[1]);
             $rows = $this->splitSqlDefinitions($tableMatch[2]);
             $columns = [];
             $tablePrimaryColumns = [];
@@ -245,12 +261,12 @@ class DiagramTransferController extends Controller
 
                 if (preg_match('/^(?:CONSTRAINT\s+[`"]?\w+[`"]?\s+)?FOREIGN\s+KEY\s*\((.+?)\)\s+REFERENCES\s+[`"]?([\w.]+)[`"]?\s*\((.+?)\)(.*)$/i', $row, $fkMatch)) {
                     $fromColumns = $this->parseColumnList($fkMatch[1]);
-                    $toTable = Str::afterLast($fkMatch[2], '.');
+                    $toTable = $this->extractTableName($fkMatch[2]);
                     $toColumns = $this->parseColumnList($fkMatch[3]);
                     [$onDelete, $onUpdate] = $this->extractFkRules($fkMatch[4] ?? '');
 
                     foreach ($fromColumns as $idx => $fromColumn) {
-                        $relationships[] = [
+                        $createRelationships[] = [
                             'from_table' => $tableName,
                             'from_column' => $fromColumn,
                             'to_table' => $toTable,
@@ -262,7 +278,7 @@ class DiagramTransferController extends Controller
                     continue;
                 }
 
-                $parsedColumn = $this->parseSqlColumnRow($row, $tableName, $relationships);
+                $parsedColumn = $this->parseSqlColumnRow($row, $tableName, $createRelationships);
                 if ($parsedColumn) $columns[] = $parsedColumn;
             }
 
@@ -285,7 +301,58 @@ class DiagramTransferController extends Controller
             ];
         }
 
-        return ['tables' => $tables, 'relationships' => array_values(array_filter($relationships, fn ($r) => ! empty($r['to_column'])))];
+        $alterRelationships = [];
+        preg_match_all('/ALTER\s+TABLE\s+'.$tableIdentifierPattern.'\s+(.*?);/is', $sql, $alterStatements, PREG_SET_ORDER);
+
+        foreach ($alterStatements as $statement) {
+            $fromTable = $this->extractTableName($statement[1]);
+            $alterBody = $statement[2] ?? '';
+
+            preg_match_all('/FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+'.$tableIdentifierPattern.'\s*\(([^)]+)\)(.*?)(?=,\s*(?:ADD\s+CONSTRAINT\s+[`"]?\w+[`"]?\s+)?FOREIGN\s+KEY|$)/is', $alterBody, $foreignKeyMatches, PREG_SET_ORDER);
+
+            foreach ($foreignKeyMatches as $foreignKeyMatch) {
+                $fromColumns = $this->parseColumnList($foreignKeyMatch[1]);
+                $toTable = $this->extractTableName($foreignKeyMatch[2]);
+                $toColumns = $this->parseColumnList($foreignKeyMatch[3]);
+                [$onDelete, $onUpdate] = $this->extractFkRules($foreignKeyMatch[4] ?? '');
+
+                foreach ($fromColumns as $index => $fromColumn) {
+                    $alterRelationships[] = [
+                        'from_table' => $fromTable,
+                        'from_column' => $fromColumn,
+                        'to_table' => $toTable,
+                        'to_column' => $toColumns[$index] ?? $toColumns[0] ?? null,
+                        'on_delete' => $onDelete,
+                        'on_update' => $onUpdate,
+                    ];
+                }
+            }
+        }
+
+        $relationships = collect($createRelationships)
+            ->merge($alterRelationships)
+            ->filter(fn ($relationship) => ! empty($relationship['from_table'])
+                && ! empty($relationship['from_column'])
+                && ! empty($relationship['to_table'])
+                && ! empty($relationship['to_column']))
+            ->map(function (array $relationship): array {
+                $relationship['from_table'] = Str::lower($relationship['from_table']);
+                $relationship['from_column'] = Str::lower($relationship['from_column']);
+                $relationship['to_table'] = Str::lower($relationship['to_table']);
+                $relationship['to_column'] = Str::lower($relationship['to_column']);
+
+                return $relationship;
+            })
+            ->unique(fn ($relationship) => implode('|', [
+                $relationship['from_table'],
+                $relationship['from_column'],
+                $relationship['to_table'],
+                $relationship['to_column'],
+            ]))
+            ->values()
+            ->all();
+
+        return ['tables' => $tables, 'relationships' => $relationships];
     }
 
     private function parseSqlColumnRow(string $row, string $tableName, array &$relationships): ?array
@@ -345,12 +412,12 @@ class DiagramTransferController extends Controller
             'default' => $default,
         ];
 
-        if (preg_match('/REFERENCES\s+[`"]?([\w.]+)[`"]?\s*\(([^)]+)\)(.*)$/i', $matches[3] ?? '', $inlineFk)) {
+        if (preg_match('/REFERENCES\s+((?:[`"]?[\w\-]+[`"]?\s*\.\s*)?[`"]?[\w\-]+[`"]?)\s*\(([^)]+)\)(.*)$/is', $matches[3] ?? '', $inlineFk)) {
             [$onDelete, $onUpdate] = $this->extractFkRules($inlineFk[3] ?? '');
             $relationships[] = [
                 'from_table' => $tableName,
                 'from_column' => $name,
-                'to_table' => Str::afterLast($inlineFk[1], '.'),
+                'to_table' => $this->extractTableName($inlineFk[1]),
                 'to_column' => trim($inlineFk[2], "`\" "),
                 'on_delete' => $onDelete,
                 'on_update' => $onUpdate,
@@ -414,6 +481,14 @@ class DiagramTransferController extends Controller
         }
 
         return [$onDelete, $onUpdate];
+    }
+
+    private function extractTableName(string $reference): string
+    {
+        $normalizedReference = preg_replace('/\s*\.\s*/', '.', trim($reference));
+        $normalizedReference = str_replace(['`', '"'], '', $normalizedReference);
+
+        return Str::afterLast($normalizedReference, '.');
     }
 
     public function exportSql(Diagram $diagram): StreamedResponse

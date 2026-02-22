@@ -1,0 +1,43 @@
+CREATE TABLE IF NOT EXISTS `app`.`users` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `email` VARCHAR(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `users_email_unique` (`email`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `app`.`profiles` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` BIGINT UNSIGNED NOT NULL UNIQUE,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_profiles_user`
+    FOREIGN KEY (`user_id`)
+    REFERENCES `app`.`users` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `orders` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` BIGINT UNSIGNED NOT NULL,
+  `invoice_id` BIGINT UNSIGNED NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  order_id BIGINT UNSIGNED NULL,
+  PRIMARY KEY (id)
+);
+
+ALTER TABLE `app`.`orders`
+  ADD CONSTRAINT `fk_orders_user`
+    FOREIGN KEY (`user_id`) REFERENCES `app`.`users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_orders_invoice`
+    FOREIGN KEY (`invoice_id`) REFERENCES invoices (id) ON DELETE SET NULL;
+
+ALTER TABLE invoices
+  ADD CONSTRAINT fk_invoices_order
+    FOREIGN KEY (order_id)
+    REFERENCES orders(id)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE;

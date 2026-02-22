@@ -32,12 +32,12 @@ export default function ImportModal({ open, onClose, diagramId, onImported }) {
         setError('');
 
         try {
-            await api.post(`/api/v1/diagrams/${diagramId}/import`, {
+            const importResponse = await api.post(`/api/v1/diagrams/${diagramId}/import`, {
                 type,
                 content,
             });
 
-            await onImported?.();
+            await onImported?.(importResponse?.data ?? importResponse);
             onClose();
             setSqlText('');
             setJsonText('');
