@@ -36,6 +36,8 @@ export default function Toolbar({
     onToggleMiniMap,
     showGrid,
     onToggleGrid,
+    canShare,
+    onShare,
 }) {
     return (
         <div className="sticky top-0 z-30 flex items-center border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
@@ -72,6 +74,7 @@ export default function Toolbar({
                         </button>
                     )}
                     <IconButton title="Export" onClick={onExport} icon="fa-solid fa-file-arrow-down" />
+                    {canShare && <IconButton title="Share view link" onClick={onShare} icon="fa-solid fa-link" />}
                     <button
                         type="button"
                         onClick={onClear}

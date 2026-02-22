@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import CarouselRow from '@/Components/Diagrams/CarouselRow';
 import DiagramCard from '@/Components/Diagrams/DiagramCard';
 import InvitationDiagramCard from '@/Components/Diagrams/InvitationDiagramCard';
-import ShareAccessModal from '@/Components/Diagrams/ShareAccessModal';
+import ShareLinkModal from '@/Components/Diagrams/modals/ShareLinkModal';
 import InviteModal from '@/Components/Diagrams/InviteModal';
 import Toast from '@/Components/UI/Toast';
 
@@ -414,7 +414,7 @@ export default function DiagramsIndex() {
                 </div>
             )}
 
-            <ShareAccessModal diagram={shareDiagram} teams={teams} open={Boolean(shareDiagram)} onClose={() => setShareDiagram(null)} />
+            <ShareLinkModal diagram={shareDiagram} open={Boolean(shareDiagram)} onClose={() => setShareDiagram(null)} />
             <InviteModal
                 open={Boolean(inviteDiagram)}
                 onClose={() => setInviteDiagram(null)}

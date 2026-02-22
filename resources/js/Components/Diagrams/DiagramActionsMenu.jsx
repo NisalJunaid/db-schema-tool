@@ -37,7 +37,7 @@ export default function DiagramActionsMenu({ diagram, onOpen, onRename, onToggle
                             <span className={`rounded-full px-2 py-0.5 text-xs ${diagram?.is_public ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{diagram?.is_public ? 'Public' : 'Private'}</span>
                         </button>
                         <button type="button" onClick={() => handle(onInvite)} className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100">Invite Collaborator</button>
-                        <button type="button" onClick={() => handle(onManageAccess)} className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100">Manage Access</button>
+                        <button type="button" onClick={() => handle(onManageAccess)} className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100">Share View Link</button>
                     </>
                 )}
                 {canDelete && <button type="button" onClick={() => handle(onDelete)} className="block w-full rounded px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50">Delete</button>}

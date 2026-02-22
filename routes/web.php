@@ -6,12 +6,14 @@ use App\Http\Controllers\Api\DiagramColumnController;
 use App\Http\Controllers\Api\DiagramDatabaseController;
 use App\Http\Controllers\Api\DiagramController;
 use App\Http\Controllers\Api\DiagramRelationshipController;
+use App\Http\Controllers\Api\DiagramShareLinkController;
 use App\Http\Controllers\Api\DiagramTableController;
 use App\Http\Controllers\Api\DiagramTransferController;
 use App\Http\Controllers\Api\InvitationController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\TeamMemberController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DiagramShareViewController;
 use App\Models\Diagram;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
@@ -26,6 +28,7 @@ Route::get('/', function () {
 })->name('home');
 
 Route::get('/invitations/accept/{token}', [InvitationController::class, 'accept'])->name('invitations.accept');
+Route::get('/s/{token}', [DiagramShareViewController::class, 'show'])->name('diagrams.share.view');
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
@@ -71,6 +74,9 @@ Route::middleware('auth')->group(function () {
         Route::patch('diagrams/{diagram}/access/{access}', [DiagramAccessController::class, 'update']);
         Route::delete('diagrams/{diagram}/access/{access}', [DiagramAccessController::class, 'destroy']);
         Route::patch('diagrams/{diagram}/visibility', [DiagramAccessController::class, 'updateVisibility']);
+        Route::get('diagrams/{diagram}/share-links', [DiagramShareLinkController::class, 'index']);
+        Route::post('diagrams/{diagram}/share-links', [DiagramShareLinkController::class, 'store']);
+        Route::post('diagrams/{diagram}/share-links/{link}/revoke', [DiagramShareLinkController::class, 'revoke']);
 
         Route::get('teams', [TeamController::class, 'index']);
         Route::post('teams', [TeamController::class, 'store']);

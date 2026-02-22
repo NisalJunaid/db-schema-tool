@@ -14,7 +14,7 @@ import ExportModal from '@/Components/Diagram/modals/ExportModal';
 import NewDiagramModal from '@/Components/Diagram/modals/NewDiagramModal';
 import OpenDiagramModal from '@/Components/Diagram/modals/OpenDiagramModal';
 import RelationshipModal from '@/Components/Diagram/modals/RelationshipModal';
-import ShareAccessModal from '@/Components/Diagrams/ShareAccessModal';
+import ShareLinkModal from '@/Components/Diagrams/modals/ShareLinkModal';
 import EditorErrorBoundary from '@/Components/EditorErrorBoundary';
 import FlowSidebar from '@/Components/CanvasFlow/FlowSidebar';
 import FlowToolbar from '@/Components/CanvasFlow/FlowToolbar';
@@ -1959,6 +1959,8 @@ function DiagramEditorContent() {
                         onToggleMiniMap={() => setShowMiniMap((current) => !current)}
                         showGrid={showGrid}
                         onToggleGrid={() => setShowGrid((current) => !current)}
+                        canShare={canManageAccess}
+                        onShare={() => setShowShareModal(true)}
                     />
 
                     {!editMode && <div className="mx-4 mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">View mode</div>}
@@ -2210,7 +2212,7 @@ function DiagramEditorContent() {
             />
             <OpenDiagramModal open={showOpenModal} diagrams={allDiagrams} onClose={() => setShowOpenModal(false)} onOpen={(selected) => router.visit(`/diagrams/${selected.id}`)} />
             <NewDiagramModal open={showNewModal} teams={teams} onClose={() => setShowNewModal(false)} onCreate={async (payload) => { const created = await api.post('/api/v1/diagrams', payload); router.visit(`/diagrams/${created?.id}`); }} />
-            {canManageAccess && <ShareAccessModal diagram={diagram} teams={teams} open={showShareModal} onClose={() => setShowShareModal(false)} />}
+            {canManageAccess && <ShareLinkModal diagram={diagram} open={showShareModal} onClose={() => setShowShareModal(false)} />}
             <Toast message={toast?.message} variant={toast?.variant} onClose={() => setToast(null)} />
         </>
     );
