@@ -9,6 +9,9 @@ function TableNode({ data }) {
     const editMode = Boolean(data?.editMode);
     const isActive = Boolean(data?.isActiveEditTable);
     const selectedColumnId = data?.selectedColumnId ?? null;
+    const tableXById = data?.tableXById ?? {};
+    const columnToTableMap = data?.columnToTableMap ?? {};
+    const relationships = Array.isArray(data?.relationships) ? data.relationships : [];
     const colorButtonRef = useRef(null);
 
     const [isEditingName, setIsEditingName] = useState(false);
@@ -131,6 +134,27 @@ function TableNode({ data }) {
                     const inputHandleId = toColumnHandleId(column.id, 'in');
                     const outputHandleId = toColumnHandleId(column.id, 'out');
                     const isHighlighted = Number(selectedColumnId) === Number(column.id);
+                    const currentX = tableXById[String(table.id)] ?? 0;
+                    const relatedXs = relationships
+                        .filter((relationship) => relationship.from_column_id === column.id || relationship.to_column_id === column.id)
+                        .map((relationship) => {
+                            const otherTableId = relationship.from_column_id === column.id
+                                ? columnToTableMap[relationship.to_column_id]
+                                : columnToTableMap[relationship.from_column_id];
+                            return tableXById[String(otherTableId)] ?? 0;
+                        });
+                    const avgOtherX = relatedXs.length
+                        ? relatedXs.reduce((sum, value) => sum + value, 0) / relatedXs.length
+                        : currentX;
+                    const relatedIsRight = avgOtherX >= currentX;
+                    const inPosition = relatedIsRight ? Position.Left : Position.Right;
+                    const outPosition = relatedIsRight ? Position.Right : Position.Left;
+                    const inputHandleSideClass = inPosition === Position.Left
+                        ? '!left-0 !-translate-x-1/2'
+                        : '!right-0 !translate-x-1/2';
+                    const outputHandleSideClass = outPosition === Position.Right
+                        ? '!right-0 !translate-x-1/2'
+                        : '!left-0 !-translate-x-1/2';
 
                     return (
                         <div
@@ -142,9 +166,9 @@ function TableNode({ data }) {
                             <Handle
                                 id={inputHandleId}
                                 type="target"
-                                position={Position.Left}
+                                position={inPosition}
                                 isConnectable={editMode}
-                                className="!left-0 !h-2.5 !w-2.5 !-translate-x-1/2 !border !border-indigo-500 !bg-white"
+                                className={`${inputHandleSideClass} !h-2.5 !w-2.5 !border !border-indigo-500 !bg-white`}
                                 style={{ pointerEvents: editMode ? 'auto' : 'none' }}
                             />
 
@@ -175,9 +199,9 @@ function TableNode({ data }) {
                             <Handle
                                 id={outputHandleId}
                                 type="source"
-                                position={Position.Right}
+                                position={outPosition}
                                 isConnectable={editMode}
-                                className="!right-0 !h-2.5 !w-2.5 !translate-x-1/2 !border !border-indigo-500 !bg-white"
+                                className={`${outputHandleSideClass} !h-2.5 !w-2.5 !border !border-indigo-500 !bg-white`}
                                 style={{ pointerEvents: editMode ? 'auto' : 'none' }}
                             />
                         </div>

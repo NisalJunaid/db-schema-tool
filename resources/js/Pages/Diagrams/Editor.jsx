@@ -591,9 +591,28 @@ function DiagramEditorContent() {
         window.clearTimeout(editModeNoticeTimerRef.current);
         editModeNoticeTimerRef.current = window.setTimeout(() => setEditModeNotice(''), 2200);
     }, []);
-    const buildNodeData = useCallback((table) => ({ table, editMode, selectedColumnId, isActiveEditTable: Number(activeEditTableId) === Number(table.id), onToggleActiveEditTable, onRenameTable, onUpdateTableColor, onAddColumn, onEditColumn, onDeleteColumn }), [activeEditTableId, editMode, selectedColumnId, onToggleActiveEditTable, onRenameTable, onUpdateTableColor, onAddColumn, onEditColumn, onDeleteColumn]);
+    const buildNodeData = useCallback((table, tableXMap = {}) => ({
+        table,
+        editMode,
+        selectedColumnId,
+        tableXById: tableXMap,
+        columnToTableMap,
+        relationships,
+        isActiveEditTable: Number(activeEditTableId) === Number(table.id),
+        onToggleActiveEditTable,
+        onRenameTable,
+        onUpdateTableColor,
+        onAddColumn,
+        onEditColumn,
+        onDeleteColumn,
+    }), [activeEditTableId, editMode, selectedColumnId, columnToTableMap, relationships, onToggleActiveEditTable, onRenameTable, onUpdateTableColor, onAddColumn, onEditColumn, onDeleteColumn]);
 
     useEffect(() => {
+        const tableXMap = tables.reduce((map, table) => {
+            map[String(table.id)] = Number.isFinite(Number(table?.x)) ? Number(table.x) : 0;
+            return map;
+        }, {});
+
         setNodes(tables.map((table) => {
             if (table?.id == null) return null;
             const computedDimensions = computeTableDimensions(table);
@@ -609,7 +628,7 @@ function DiagramEditorContent() {
                     x: Number.isFinite(rawX) ? rawX : 0,
                     y: Number.isFinite(rawY) ? rawY : 0,
                 },
-                data: buildNodeData(table),
+                data: buildNodeData(table, tableXMap),
                 style: { width },
                 selected: selectedNodeId === String(table.id),
             };
@@ -624,36 +643,20 @@ function DiagramEditorContent() {
         return label;
     }, []);
 
-    const tableXById = useMemo(() => {
-        const map = {};
-        (nodes ?? []).forEach((node) => {
-            map[String(node.id)] = Number.isFinite(Number(node.position?.x))
-                ? Number(node.position.x)
-                : 0;
-        });
-        return map;
-    }, [nodes]);
-
     const edges = useMemo(() => {
         return (relationships ?? []).map((relationship) => {
             const sourceTableId = columnToTableMap[relationship.from_column_id];
             const targetTableId = columnToTableMap[relationship.to_column_id];
             if (!sourceTableId || !targetTableId) return null;
 
-            const sourceX = tableXById[String(sourceTableId)] ?? 0;
-            const targetX = tableXById[String(targetTableId)] ?? 0;
-
-            const targetIsRight = targetX >= sourceX;
-            const sourceSide = targetIsRight ? 'out' : 'in';
-            const targetSide = targetIsRight ? 'in' : 'out';
             const isSelected = selectedEdgeId === String(relationship.id);
 
             return {
                 id: String(relationship.id),
                 source: String(sourceTableId),
                 target: String(targetTableId),
-                sourceHandle: toColumnHandleId(relationship.from_column_id, sourceSide),
-                targetHandle: toColumnHandleId(relationship.to_column_id, targetSide),
+                sourceHandle: toColumnHandleId(relationship.from_column_id, 'out'),
+                targetHandle: toColumnHandleId(relationship.to_column_id, 'in'),
                 type: 'default',
                 label: relationshipLabel(relationship.type, relationship.on_delete),
                 animated: false,
@@ -668,7 +671,7 @@ function DiagramEditorContent() {
                 labelStyle: { fill: '#334155', fontSize: 11, fontWeight: 600 },
             };
         }).filter(Boolean);
-    }, [relationships, selectedEdgeId, columnToTableMap, relationshipLabel, tableXById, nodes]);
+    }, [relationships, selectedEdgeId, columnToTableMap, relationshipLabel, nodes]);
 
     const decoratedFlowNodes = useMemo(() => {
         if (!isFlow) return flowNodes;
@@ -796,7 +799,25 @@ function DiagramEditorContent() {
 
     const onNodesChange = useCallback((changes) => {
         if (editorMode === 'db') {
-            setNodes((current) => applyNodeChanges(changes, current));
+            setNodes((current) => {
+                const nextNodes = applyNodeChanges(changes, current);
+                const tableXMap = nextNodes.reduce((map, node) => {
+                    map[String(node.id)] = Number.isFinite(Number(node.position?.x))
+                        ? Number(node.position.x)
+                        : 0;
+                    return map;
+                }, {});
+
+                return nextNodes.map((node) => ({
+                    ...node,
+                    data: {
+                        ...(node.data ?? {}),
+                        tableXById: tableXMap,
+                        columnToTableMap,
+                        relationships,
+                    },
+                }));
+            });
             return;
         }
 
@@ -822,7 +843,7 @@ function DiagramEditorContent() {
         }
 
         setMindNodes((current) => applyNodeChanges(changes, current));
-    }, [commitFlowState, editorMode, flowDoodles, scheduleCanvasSave]);
+    }, [columnToTableMap, commitFlowState, editorMode, flowDoodles, relationships, scheduleCanvasSave]);
 
     const onEdgesChange = useCallback((changes) => {
         if (editorMode === 'flow') {
