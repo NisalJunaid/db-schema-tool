@@ -18,6 +18,7 @@ class DiagramTable extends Model
      */
     protected $fillable = [
         'diagram_id',
+        'database_id',
         'name',
         'schema',
         'color',
@@ -35,5 +36,10 @@ class DiagramTable extends Model
     public function diagramColumns(): HasMany
     {
         return $this->hasMany(DiagramColumn::class);
+    }
+
+    public function database(): BelongsTo
+    {
+        return $this->belongsTo(DiagramDatabase::class, 'database_id');
     }
 }

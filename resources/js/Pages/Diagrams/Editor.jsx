@@ -4,6 +4,7 @@ import { toBlob, toPng } from 'html-to-image';
 import { Background, ControlButton, Controls, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, getRectOfNodes, getViewportForBounds } from 'reactflow';
 import 'reactflow/dist/style.css';
 import TableNode from '@/Components/Diagram/TableNode';
+import DatabaseGroupNode from '@/Components/Diagram/DatabaseGroupNode';
 import Sidebar from '@/Components/Diagram/Sidebar';
 import Toolbar from '@/Components/Diagram/Toolbar';
 import AddColumnModal from '@/Components/Diagram/modals/AddColumnModal';
@@ -29,7 +30,7 @@ import Toast from '@/Components/UI/Toast';
 import { mindNodeTypes } from '@/Components/CanvasMind/mindTypes';
 import { collectDescendantIds } from '@/Components/CanvasMind/mindLayout';
 import { createMindChildNode, createMindRootNode } from '@/Components/CanvasMind/mindDefaults';
-import { asCollection, computeTableDimensions, getTableColorMeta, parseColumnIdFromHandle, toColumnHandleId } from '@/Components/Diagram/utils';
+import { asCollection, computeTableDimensions, getTableColorMeta, parseColumnIdFromHandle, shadeHexColor, toColumnHandleId } from '@/Components/Diagram/utils';
 import { api, SESSION_EXPIRED_MESSAGE } from '@/lib/api';
 
 const defaultTableSize = { w: 320, h: 240 };
@@ -92,7 +93,9 @@ function DiagramEditorContent() {
 
     const [diagram, setDiagram] = useState(null);
     const [tables, setTables] = useState([]);
+    const [databases, setDatabases] = useState([]);
     const [relationships, setRelationships] = useState([]);
+    const [hiddenDatabaseIds, setHiddenDatabaseIds] = useState([]);
     const [nodes, setNodes] = useState([]);
     const [editorMode, setEditorMode] = useState(
         initialDiagramPayload?.editor_mode && ['db', 'flow', 'mind'].includes(initialDiagramPayload.editor_mode)
@@ -361,12 +364,25 @@ function DiagramEditorContent() {
             const response = await api.get(`/api/v1/diagrams/${diagramId}`);
             const diagramPayload = response?.data ?? response;
             const loadedTables = asCollection(diagramPayload.diagram_tables ?? diagramPayload.diagramTables, 'diagram_tables').map(normalizeTable);
+            const loadedDatabases = asCollection(diagramPayload.diagram_databases ?? diagramPayload.databases, 'diagram_databases');
+            const databaseMap = loadedDatabases.reduce((map, database) => {
+                map[String(database.id)] = database;
+                return map;
+            }, {});
             const usedTableColors = [];
             const normalizedTables = loadedTables.map((table) => {
                 if (table.color) {
                     usedTableColors.push(table.color);
                     return table;
                 }
+
+                const databaseColor = table.database_id ? databaseMap[String(table.database_id)]?.color : null;
+                if (databaseColor) {
+                    const inheritedColor = shadeHexColor(databaseColor, -12);
+                    usedTableColors.push(inheritedColor);
+                    return { ...table, color: inheritedColor };
+                }
+
                 const color = pickNextColor(usedTableColors);
                 usedTableColors.push(color);
                 return { ...table, color };
@@ -387,6 +403,8 @@ function DiagramEditorContent() {
             setDiagram(diagramPayload);
             setEditorMode(mode);
             setTables(normalizedTables);
+            setDatabases(loadedDatabases);
+            setHiddenDatabaseIds([]);
             setRelationships(relationshipRows);
 
             if (diagramPayload?.editor_mode === 'flow') {
@@ -567,6 +585,41 @@ function DiagramEditorContent() {
         }
     }, [canEdit, commitEditorState, editMode, relationships, schedulePreviewUpload, tables]);
 
+    const onAddDatabase = useCallback(async () => {
+        if (!canEdit || !editMode) return;
+        const name = window.prompt('Database name', `Database ${databases.length + 1}`);
+        if (!name) return;
+        const response = await api.post('/api/v1/diagram-databases', { diagram_id: Number(diagramId), name, color: pickNextColor(databases.map((entry) => entry.color).filter(Boolean)) });
+        const created = response?.data ?? response;
+        setDatabases((current) => [...current, created]);
+    }, [canEdit, databases, diagramId, editMode]);
+
+    const onRenameDatabase = useCallback(async (databaseId) => {
+        if (!canEdit || !editMode) return;
+        const database = databases.find((entry) => Number(entry.id) === Number(databaseId));
+        if (!database) return;
+        const name = window.prompt('Rename database', database.name);
+        if (!name) return;
+        const response = await api.patch(`/api/v1/diagram-databases/${databaseId}`, { name });
+        const updated = response?.data ?? response;
+        setDatabases((current) => current.map((entry) => Number(entry.id) === Number(databaseId) ? updated : entry));
+    }, [canEdit, databases, editMode]);
+
+    const onDeleteDatabase = useCallback(async (databaseId) => {
+        if (!canEdit || !editMode) return;
+        if (!window.confirm('Delete this database group? Tables will be moved to Default.')) return;
+        await api.delete(`/api/v1/diagram-databases/${databaseId}`);
+        const reload = await loadDiagram();
+        return reload;
+    }, [canEdit, editMode, loadDiagram]);
+
+    const onUpdateDatabaseColor = useCallback(async (databaseId, color) => {
+        if (!canEdit || !editMode) return;
+        const response = await api.patch(`/api/v1/diagram-databases/${databaseId}`, { color });
+        const updated = response?.data ?? response;
+        setDatabases((current) => current.map((entry) => Number(entry.id) === Number(databaseId) ? updated : entry));
+    }, [canEdit, editMode]);
+
     const onAddColumn = useCallback((tableId) => { setFormErrors({}); setColumnModalMode('create'); setEditingColumn(null); setAddColumnForm({ ...defaultColumnForm, tableId: String(tableId) }); setShowAddColumnModal(true); }, []);
     const onEditColumn = useCallback((column) => { setFormErrors({}); setColumnModalMode('edit'); setEditingColumn(column); setAddColumnForm({ ...defaultColumnForm, tableId: String(column.diagram_table_id), name: column.name, type: column.type, enum_values: column.enum_values ?? [], length: column.length ?? 255, precision: column.precision ?? 10, scale: column.scale ?? 2, unsigned: Boolean(column.unsigned), auto_increment: Boolean(column.auto_increment), nullable: Boolean(column.nullable), primary: Boolean(column.primary), unique: Boolean(column.unique), index_type: column.index_type ?? '', default: column.default ?? '', collation: column.collation ?? '' }); setShowAddColumnModal(true); }, []);
 
@@ -613,27 +666,51 @@ function DiagramEditorContent() {
             return map;
         }, {});
 
-        setNodes(tables.map((table) => {
+        const groupNodes = (databases ?? []).map((database) => ({
+            id: `db-${database.id}`,
+            type: 'databaseGroup',
+            draggable: editMode,
+            selectable: false,
+            position: {
+                x: Number(database?.x ?? 0),
+                y: Number(database?.y ?? 0),
+            },
+            data: {
+                id: database.id,
+                name: database.name,
+                color: database.color || '#64748b',
+                width: Number(database.width ?? 1200),
+                height: Number(database.height ?? 800),
+            },
+            style: { zIndex: 0 },
+        }));
+
+        const tableNodes = tables.map((table) => {
             if (table?.id == null) return null;
             const computedDimensions = computeTableDimensions(table);
             const rawWidth = Number(table?.w ?? computedDimensions.width ?? defaultTableSize.w);
             const width = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : defaultTableSize.w;
             const rawX = Number(table?.x ?? 0);
             const rawY = Number(table?.y ?? 0);
+            const parentNode = table.database_id ? `db-${table.database_id}` : undefined;
             return {
                 id: String(table.id),
                 type: 'tableNode',
                 draggable: editMode,
+                parentNode,
+                extent: parentNode ? 'parent' : undefined,
                 position: {
                     x: Number.isFinite(rawX) ? rawX : 0,
                     y: Number.isFinite(rawY) ? rawY : 0,
                 },
                 data: buildNodeData(table, tableXMap),
-                style: { width },
+                style: { width, zIndex: 10 },
                 selected: selectedNodeId === String(table.id),
             };
-        }).filter(Boolean));
-    }, [tables, editMode, selectedColumnId, buildNodeData, selectedNodeId]);
+        }).filter(Boolean);
+
+        setNodes([...(editorMode === 'db' ? groupNodes : []), ...tableNodes]);
+    }, [tables, databases, editMode, selectedColumnId, buildNodeData, selectedNodeId, editorMode]);
 
     const relationshipLabel = useCallback((type, onDelete = null) => {
         let label = type === 'one_to_one' ? '1:1' : '1:N';
@@ -650,6 +727,9 @@ function DiagramEditorContent() {
             if (!sourceTableId || !targetTableId) return null;
 
             const isSelected = selectedEdgeId === String(relationship.id);
+            const sourceTable = tables.find((table) => Number(table.id) === Number(sourceTableId));
+            const targetTable = tables.find((table) => Number(table.id) === Number(targetTableId));
+            const isCrossDb = Number(sourceTable?.database_id ?? 0) !== Number(targetTable?.database_id ?? 0);
 
             return {
                 id: String(relationship.id),
@@ -658,11 +738,16 @@ function DiagramEditorContent() {
                 sourceHandle: toColumnHandleId(relationship.from_column_id, 'out'),
                 targetHandle: toColumnHandleId(relationship.to_column_id, 'in'),
                 type: 'default',
-                label: relationshipLabel(relationship.type, relationship.on_delete),
+                label: `${relationshipLabel(relationship.type, relationship.on_delete)}${isCrossDb ? ' (cross-db)' : ''}`,
                 animated: false,
                 data: { type: relationship.type },
                 selected: isSelected,
-                style: {
+                style: isCrossDb ? {
+                    strokeDasharray: '4 4',
+                    strokeWidth: isSelected ? 4 : 3,
+                    stroke: '#9333ea',
+                    opacity: isSelected ? 1 : 0.95,
+                } : {
                     strokeDasharray: '5 5',
                     strokeWidth: isSelected ? 4 : 2,
                     stroke: relationship.color || '#64748b',
@@ -671,7 +756,7 @@ function DiagramEditorContent() {
                 labelStyle: { fill: '#334155', fontSize: 11, fontWeight: 600 },
             };
         }).filter(Boolean);
-    }, [relationships, selectedEdgeId, columnToTableMap, relationshipLabel, nodes]);
+    }, [relationships, selectedEdgeId, columnToTableMap, relationshipLabel, nodes, tables]);
 
     const decoratedFlowNodes = useMemo(() => {
         if (!isFlow) return flowNodes;
@@ -700,20 +785,28 @@ function DiagramEditorContent() {
     }, [editMode, flowNodes, hoverTargetNodeId, isConnecting, isConnectorTool, isFlow, selectedNodeId]);
 
     const activeNodes = useMemo(() => {
-        if (editorMode === 'db') return nodes;
+        if (editorMode === 'db') {
+            if (!hiddenDatabaseIds.length) return nodes;
+            const hiddenSet = new Set(hiddenDatabaseIds.map((id) => `db-${id}`));
+            return nodes.filter((node) => !hiddenSet.has(String(node.parentNode)) && !hiddenSet.has(String(node.id)));
+        }
         if (editorMode === 'flow') return decoratedFlowNodes;
 
         const hiddenIds = new Set(mindNodes.filter((node) => node.data?.collapsed).flatMap((node) => collectDescendantIds(node.id, mindNodes)));
         return mindNodes.filter((node) => !hiddenIds.has(node.id));
-    }, [decoratedFlowNodes, editorMode, mindNodes, nodes]);
+    }, [decoratedFlowNodes, editorMode, hiddenDatabaseIds, mindNodes, nodes]);
 
     const activeEdges = useMemo(() => {
-        if (editorMode === 'db') return edges;
+        if (editorMode === 'db') {
+            if (!hiddenDatabaseIds.length) return edges;
+            const visibleIds = new Set(activeNodes.map((node) => String(node.id)));
+            return edges.filter((edge) => visibleIds.has(String(edge.source)) && visibleIds.has(String(edge.target)));
+        }
         if (editorMode === 'flow') return flowEdges;
 
         const hiddenIds = new Set(mindNodes.filter((node) => node.data?.collapsed).flatMap((node) => collectDescendantIds(node.id, mindNodes)));
         return mindEdges.filter((edge) => !hiddenIds.has(edge.source) && !hiddenIds.has(edge.target));
-    }, [editorMode, edges, flowEdges, mindEdges, mindNodes]);
+    }, [activeNodes, editorMode, edges, flowEdges, hiddenDatabaseIds, mindEdges, mindNodes]);
 
     const commitFlowState = useCallback((nextNodes, nextEdges, previousNodes = flowNodes, previousEdges = flowEdges) => {
         setFlowHistory((current) => ({
@@ -1208,6 +1301,27 @@ function DiagramEditorContent() {
     };
 
     const onNodeDragStop = useCallback(async (_, node) => {
+        if (editorMode === 'db' && String(node.id).startsWith('db-')) {
+            if (!(canEdit && editMode)) return;
+
+            const databaseId = Number(String(node.id).replace('db-', ''));
+            const nextDatabases = databases.map((database) => Number(database.id) === databaseId
+                ? { ...database, x: Math.round(node.position.x), y: Math.round(node.position.y) }
+                : database);
+            setDatabases(nextDatabases);
+
+            try {
+                await api.patch(`/api/v1/diagram-databases/${databaseId}`, {
+                    x: Math.round(node.position.x),
+                    y: Math.round(node.position.y),
+                });
+            } catch {
+                // ignore and rely on autosave reload
+            }
+
+            return;
+        }
+
         if (editorMode === 'flow') {
             const nextNodes = flowNodes.map((entry) => (entry.id === node.id ? { ...entry, position: node.position } : entry));
             commitFlowState(nextNodes, flowEdges, flowNodes, flowEdges);
@@ -1236,7 +1350,7 @@ function DiagramEditorContent() {
             if (dragError?.status === 401) return handle401();
             setError(dragError.message || 'Failed to update table position.');
         }
-    }, [commitEditorState, commitFlowState, commitMindState, editorMode, flowDoodles, flowEdges, flowNodes, handle401, mindDoodles, mindEdges, mindNodes, relationships, scheduleCanvasSave, schedulePreviewUpload, tables]);
+    }, [canEdit, commitEditorState, commitFlowState, commitMindState, databases, editMode, editorMode, flowDoodles, flowEdges, flowNodes, handle401, mindDoodles, mindEdges, mindNodes, relationships, scheduleCanvasSave, schedulePreviewUpload, tables]);
 
     const handleViewportSave = useCallback((viewport) => {
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
@@ -1257,7 +1371,9 @@ function DiagramEditorContent() {
             const viewport = reactFlowRef.current?.getViewport?.() ?? diagram?.viewport ?? { x: 0, y: 0, zoom: 1 };
 
             if (editorMode === 'db') {
-                await Promise.all(nodes.map((node) => api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) })));
+                await Promise.all(nodes
+                    .filter((node) => /^\d+$/.test(String(node.id)))
+                    .map((node) => api.patch(`/api/v1/diagram-tables/${node.id}`, { x: Math.round(node.position.x), y: Math.round(node.position.y), w: Math.round(node.width ?? defaultTableSize.w), h: Math.round(node.height ?? defaultTableSize.h) })));
                 await api.patch(`/api/v1/diagrams/${diagramId}`, { viewport });
                 await uploadDiagramPreview();
             } else if (editorMode === 'flow') {
@@ -1724,10 +1840,10 @@ function DiagramEditorContent() {
                     : { fallbackMindNode: (() => null) };
             }
 
-            return { tableNode: TableNode ?? (() => null) };
+            return { tableNode: TableNode ?? (() => null), databaseGroup: DatabaseGroupNode ?? (() => null) };
         } catch (nodeTypeError) {
             console.error('nodeTypes error', nodeTypeError);
-            return { tableNode: TableNode ?? (() => null) };
+            return { tableNode: TableNode ?? (() => null), databaseGroup: DatabaseGroupNode ?? (() => null) };
         }
     }, [editorMode]);
 
@@ -1745,6 +1861,7 @@ function DiagramEditorContent() {
                     <Sidebar
                         diagramName={diagram?.name || `Diagram #${diagramId}`}
                         tables={tables}
+                        databases={databases}
                         isCollapsed={sidebarCollapsed}
                         onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
                         onFocusTable={focusOnTable}
@@ -1754,6 +1871,12 @@ function DiagramEditorContent() {
                         onEditColumn={onEditColumn}
                         onDeleteColumn={onDeleteColumn}
                         onUpdateTableColor={onUpdateTableColor}
+                        onAddDatabase={onAddDatabase}
+                        onRenameDatabase={onRenameDatabase}
+                        onDeleteDatabase={onDeleteDatabase}
+                        onUpdateDatabaseColor={onUpdateDatabaseColor}
+                        hiddenDatabaseIds={hiddenDatabaseIds}
+                        onToggleDatabaseVisibility={(id) => setHiddenDatabaseIds((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id])}
                         editMode={canEdit && editMode}
                         onToggleEditMode={() => { if (!canEdit) return; setEditMode((current) => !current); setActiveEditTableId(null); }}
                         canEdit={canEdit}

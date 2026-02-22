@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\DiagramAccessController;
 use App\Http\Controllers\Api\DiagramColumnController;
+use App\Http\Controllers\Api\DiagramDatabaseController;
 use App\Http\Controllers\Api\DiagramController;
 use App\Http\Controllers\Api\DiagramRelationshipController;
 use App\Http\Controllers\Api\DiagramTableController;
@@ -89,6 +90,7 @@ Route::middleware('auth')->group(function () {
         Route::get('admin/invitations', [InvitationController::class, 'adminIndex']);
         Route::post('admin/invitations/{invitation}/resend', [InvitationController::class, 'resend']);
 
+        Route::apiResource('diagram-databases', DiagramDatabaseController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('diagram-tables', DiagramTableController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('diagram-columns', DiagramColumnController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('diagram-relationships', DiagramRelationshipController::class)->only(['store', 'update', 'destroy']);

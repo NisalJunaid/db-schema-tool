@@ -17,6 +17,7 @@ class StoreDiagramTableRequest extends FormRequest
     {
         return [
             'diagram_id' => ['required', 'integer', 'exists:diagrams,id'],
+            'database_id' => ['nullable', 'integer', 'exists:diagram_databases,id'],
             'name' => [
                 'required',
                 'string',

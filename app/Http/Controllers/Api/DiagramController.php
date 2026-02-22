@@ -116,10 +116,11 @@ class DiagramController extends Controller
     {
         $this->authorize('view', $diagram);
 
-        $diagram->load(['diagramTables.diagramColumns', 'diagramRelationships']);
+        $diagram->load(['databases', 'diagramTables.diagramColumns', 'diagramRelationships']);
 
         return response()->json([
             ...$diagram->toArray(),
+            'diagram_databases' => $diagram->databases,
             'diagram_relationships' => $diagram->diagramRelationships,
             'permissions' => $this->diagramPermissions($request, $diagram),
         ]);
@@ -130,6 +131,7 @@ class DiagramController extends Controller
         $this->authorize('edit', $diagram);
 
         $diagram->diagramRelationships()->delete();
+        $diagram->databases()->delete();
         $diagram->diagramTables()->each(function ($table): void {
             $table->diagramColumns()->delete();
             $table->delete();
